@@ -1,45 +1,40 @@
-use egui_winit::winit;
-use phyesthon::window::Window;
-use std::sync::Arc;
+use egui_winit::winit::{self, platform::run_return::EventLoopExtRunReturn};
+use phyesthon::{
+    presenters::{spring::Spring, Presenter},
+    window::Window,
+};
 
 fn main() {
-    let event_loop = winit::event_loop::EventLoopBuilder::with_user_event().build();
+    let mut event_loop = winit::event_loop::EventLoopBuilder::with_user_event().build();
     let window = unsafe { Window::new(&event_loop) };
 
-    let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, Arc::clone(window.gl()), None);
-    let mut n = 1;
+    let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, window.clone_gl(), None);
 
-    event_loop.run(move |event, _, control_flow| {
+    let spring = Spring::new(window.clone_gl());
+    let presenters: [Box<dyn Presenter>; 1] = [Box::new(spring)];
+    let current_presenter = presenters[0].as_ref();
+
+    event_loop.run_return(move |event, _, control_flow| {
         match event {
             winit::event::Event::RedrawRequested(_) => {
                 let repaint_after = egui_glow.run(window.window(), |egui_ctx| {
-                    egui::SidePanel::left("my_side_panel")
+                    egui::SidePanel::left("Side panel")
                         .min_width(100.0)
                         .max_width(500.0)
                         .default_width(400.0)
                         .show(egui_ctx, |ui| {
-                            ui.heading("Hello World!");
-                            if ui.button("Nice").clicked() {
-                                println!("Nice!");
-                            }
+                            ui.heading(current_presenter.name());
+                            ui.separator();
 
-                            use egui_plot::{Line, Plot, PlotPoints};
-                            let sin: PlotPoints = (0..n)
-                                .map(|i| {
-                                    let x = i as f64 * 0.01;
-                                    [x.cos(), x.sin()]
-                                })
-                                .collect();
+                            current_presenter.show_side_ui(ui);
+                        });
 
-                            let line = Line::new(sin);
-
-                            n += 1;
-                            Plot::new("my_plot")
-                                .data_aspect(1.0)
-                                .view_aspect(1.0)
-                                .auto_bounds_x()
-                                .auto_bounds_y()
-                                .show(ui, |plot_ui| plot_ui.line(line));
+                    egui::TopBottomPanel::bottom("Bottom panel")
+                        .max_height(400.0)
+                        .min_height(100.0)
+                        .default_height(300.0)
+                        .show(egui_ctx, |ui| {
+                            current_presenter.show_bottom_ui(ui);
                         });
                 });
 
@@ -56,7 +51,7 @@ fn main() {
 
                 window.clear();
 
-                // draw things behind egui here
+                current_presenter.draw();
 
                 egui_glow.paint(window.window());
 

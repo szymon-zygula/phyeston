@@ -122,8 +122,12 @@ impl Window {
         }
     }
 
-    pub fn gl(&self) -> &Arc<glow::Context> {
+    pub fn gl(&self) -> &glow::Context {
         &self.gl
+    }
+
+    pub fn clone_gl(&self) -> Arc<glow::Context> {
+        Arc::clone(&self.gl)
     }
 
     pub fn window(&self) -> &winit::window::Window {
