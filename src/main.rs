@@ -7,17 +7,40 @@ fn main() {
     let window = unsafe { Window::new(&event_loop) };
 
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, Arc::clone(window.gl()), None);
+    let mut n = 1;
 
     event_loop.run(move |event, _, control_flow| {
         match event {
             winit::event::Event::RedrawRequested(_) => {
                 let repaint_after = egui_glow.run(window.window(), |egui_ctx| {
-                    egui::SidePanel::left("my_side_panel").show(egui_ctx, |ui| {
-                        ui.heading("Hello World!");
-                        if ui.button("Nice").clicked() {
-                            println!("Nice!");
-                        }
-                    });
+                    egui::SidePanel::left("my_side_panel")
+                        .min_width(100.0)
+                        .max_width(500.0)
+                        .default_width(400.0)
+                        .show(egui_ctx, |ui| {
+                            ui.heading("Hello World!");
+                            if ui.button("Nice").clicked() {
+                                println!("Nice!");
+                            }
+
+                            use egui_plot::{Line, Plot, PlotPoints};
+                            let sin: PlotPoints = (0..n)
+                                .map(|i| {
+                                    let x = i as f64 * 0.01;
+                                    [x.cos(), x.sin()]
+                                })
+                                .collect();
+
+                            let line = Line::new(sin);
+
+                            n += 1;
+                            Plot::new("my_plot")
+                                .data_aspect(1.0)
+                                .view_aspect(1.0)
+                                .auto_bounds_x()
+                                .auto_bounds_y()
+                                .show(ui, |plot_ui| plot_ui.line(line));
+                        });
                 });
 
                 if repaint_after.is_zero() {
