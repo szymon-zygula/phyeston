@@ -1,6 +1,8 @@
 use egui_winit::winit;
 use glow::HasContext;
+use glutin::surface::GlSurface;
 use std::sync::Arc;
+use winit::dpi::{LogicalSize, PhysicalSize};
 
 pub struct Window {
     window: winit::window::Window,
@@ -17,11 +19,10 @@ impl Window {
         use glutin::context::NotCurrentGlContextSurfaceAccessor;
         use glutin::display::GetGlDisplay;
         use glutin::display::GlDisplay;
-        use glutin::prelude::GlSurface;
         use raw_window_handle::HasRawWindowHandle;
         let winit_window_builder = winit::window::WindowBuilder::new()
             .with_resizable(true)
-            .with_inner_size(winit::dpi::LogicalSize {
+            .with_inner_size(LogicalSize {
                 width: 800.0,
                 height: 600.0,
             })
@@ -134,8 +135,7 @@ impl Window {
         &self.window
     }
 
-    pub fn resize(&self, physical_size: winit::dpi::PhysicalSize<u32>) {
-        use glutin::surface::GlSurface;
+    pub fn resize(&self, physical_size: PhysicalSize<u32>) {
         self.gl_surface.resize(
             &self.gl_context,
             physical_size.width.try_into().unwrap(),
@@ -143,8 +143,14 @@ impl Window {
         );
     }
 
+    pub fn size(&self) -> Option<PhysicalSize<u32>> {
+        self.gl_surface
+            .width()
+            .zip(self.gl_surface.height())
+            .map(|(w, h)| PhysicalSize::new(w, h))
+    }
+
     pub fn swap_buffers(&self) -> glutin::error::Result<()> {
-        use glutin::surface::GlSurface;
         self.gl_surface.swap_buffers(&self.gl_context)
     }
 

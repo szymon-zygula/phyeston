@@ -2,6 +2,7 @@ use super::{gl_drawable::GlDrawable, opengl};
 use crate::utils;
 use glow::HasContext;
 use nalgebra as na;
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -11,17 +12,7 @@ pub trait Vertex {
     fn set_vertex_attrib_pointers(gl: &glow::Context);
 }
 
-#[derive(Clone, Copy, Debug)]
-#[repr(C)]
-pub struct SimpleVertex(pub na::Point3<f32>);
-
-impl SimpleVertex {
-    pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Self(na::Point3::new(x, y, z))
-    }
-}
-
-impl Vertex for SimpleVertex {
+impl Vertex for na::Point3<f32> {
     fn set_vertex_attrib_pointers(gl: &glow::Context) {
         unsafe {
             gl.vertex_attrib_pointer_f32(
@@ -29,7 +20,7 @@ impl Vertex for SimpleVertex {
                 3,
                 glow::FLOAT,
                 false,
-                std::mem::size_of::<SimpleVertex>() as i32,
+                std::mem::size_of::<na::Point3<f32>>() as i32,
                 0,
             );
             gl.enable_vertex_attrib_array(0);
@@ -81,20 +72,29 @@ pub struct Mesh<V: Vertex> {
     pub triangles: Vec<Triangle>,
 }
 
-pub struct GlMesh<'gl> {
+impl<V: Vertex> Mesh<V> {
+    pub fn new(vertices: Vec<V>, triangles: Vec<Triangle>) -> Self {
+        Self {
+            vertices,
+            triangles,
+        }
+    }
+}
+
+pub struct GlMesh {
     vertex_buffer: glow::Buffer,
     element_buffer: glow::Buffer,
     element_count: u32,
     vertex_array: glow::VertexArray,
-    gl: &'gl glow::Context,
+    gl: Arc<glow::Context>,
 }
 
-impl<'gl> GlMesh<'gl> {
-    pub fn new<V: Vertex>(gl: &'gl glow::Context, mesh: &Mesh<V>) -> Self {
+impl GlMesh {
+    pub fn new<V: Vertex>(gl: Arc<glow::Context>, mesh: &Mesh<V>) -> Self {
         let vertex_buffer = unsafe { gl.create_buffer() }.unwrap();
         let element_buffer = unsafe { gl.create_buffer() }.unwrap();
 
-        let vertex_array = opengl::init_vao(gl, || unsafe {
+        let vertex_array = opengl::init_vao(&gl, || unsafe {
             let raw_points = utils::slice_as_raw(&mesh.vertices);
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(vertex_buffer));
             gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, raw_points, glow::STATIC_DRAW);
@@ -103,7 +103,7 @@ impl<'gl> GlMesh<'gl> {
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(element_buffer));
             gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, raw_elements, glow::STATIC_DRAW);
 
-            V::set_vertex_attrib_pointers(gl);
+            V::set_vertex_attrib_pointers(&gl);
         });
 
         Self {
@@ -116,9 +116,9 @@ impl<'gl> GlMesh<'gl> {
     }
 }
 
-impl<'gl> GlDrawable for GlMesh<'gl> {
+impl GlDrawable for GlMesh {
     fn draw(&self) {
-        opengl::with_vao(self.gl, self.vertex_array, || unsafe {
+        opengl::with_vao(&self.gl, self.vertex_array, || unsafe {
             self.gl.draw_elements(
                 glow::TRIANGLES,
                 self.element_count as i32,
@@ -129,7 +129,7 @@ impl<'gl> GlDrawable for GlMesh<'gl> {
     }
 }
 
-impl<'gl> Drop for GlMesh<'gl> {
+impl Drop for GlMesh {
     fn drop(&mut self) {
         unsafe {
             self.gl.delete_vertex_array(self.vertex_array);

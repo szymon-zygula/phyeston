@@ -7,12 +7,17 @@ use super::{
 };
 use crate::{
     numerics::EulerODESolver,
-    render::gl_program::GlProgram,
+    render::{
+        gl_drawable::GlDrawable,
+        gl_program::GlProgram,
+        mesh::{GlMesh, Mesh, Triangle},
+    },
     simulators::spring::{self, SpringODE, SpringState},
 };
 use egui::{containers::ComboBox, Rgba, Ui};
 use egui_plot::{Corner, Legend, Line, Plot, PlotPoints};
 use itertools::Itertools;
+use nalgebra as na;
 use std::{f64::consts::PI, sync::Arc};
 
 macro_rules! state_graph {
@@ -25,14 +30,15 @@ macro_rules! state_graph {
 }
 
 pub struct Spring {
-    gl: Arc<glow::Context>,
     gl_program: GlProgram,
+    rect_mesh: GlMesh,
 
     steps_per_frame: usize,
     euler: EulerODESolver<spring::F, 2, SpringODE>,
     states: Vec<SpringState>,
     outer_force_functions: Vec<Box<dyn ParametrizableFunction<F = spring::F>>>,
     selected_outer_force_idx: usize,
+    last_clear_t: spring::F,
 }
 
 impl Spring {
@@ -48,19 +54,20 @@ impl Spring {
         );
 
         Spring {
+            rect_mesh: Self::create_rect_mesh(Arc::clone(&gl)),
             gl_program: GlProgram::with_shader_names(
-                Arc::clone(&gl),
+                gl,
                 &[
                     ("pass_frag", glow::FRAGMENT_SHADER),
                     ("2d_vert", glow::VERTEX_SHADER),
                 ],
             ),
-            gl,
             steps_per_frame,
             euler: EulerODESolver::new(delta, ode),
             states: Vec::new(),
             outer_force_functions: Self::create_outer_force_functions(),
             selected_outer_force_idx: 0,
+            last_clear_t: 0.0,
         }
     }
 
@@ -91,6 +98,21 @@ impl Spring {
 
         assert_ne!(functions.len(), 0);
         functions
+    }
+
+    fn create_rect_mesh(gl: Arc<glow::Context>) -> GlMesh {
+        // 0 1
+        // 3 2
+        let mesh = Mesh::new(
+            vec![
+                na::point!(-0.25, 0.25, 0.0),
+                na::point!(0.25, 0.25, 0.0),
+                na::point!(0.25, -0.25, 0.0),
+                na::point!(-0.25, -0.25, 0.0),
+            ],
+            vec![Triangle([2, 1, 0]), Triangle([3, 2, 0])],
+        );
+        GlMesh::new(gl, &mesh)
     }
 
     fn position_graph(&self, ui: &mut Ui) {
@@ -193,7 +215,7 @@ impl Spring {
     }
 
     fn bottom_data_aspect(&self) -> f32 {
-        0.05 * self.states.last().map(|s| s.t).unwrap_or(1.0) as f32
+        0.05 * self.states.last().map(|s| s.t - self.last_clear_t).unwrap_or(1.0) as f32
     }
 
     fn current_state(&self) -> Option<&SpringState> {
@@ -269,8 +291,52 @@ impl Presenter for Spring {
         });
     }
 
-    fn draw(&self) {
+    fn draw(&self, aspect_ratio: f32) {
+        let Some(state) = self.states.last() else {
+            return;
+        };
 
+        self.gl_program.enable();
+
+        self.gl_program.uniform_matrix_4_f32_slice(
+            "view_transform",
+            na::matrix![
+                1.0 / aspect_ratio, 0.0, 0.0, 0.0;
+                0.0, 1.0, 0.0, 0.0;
+                0.0, 0.0, 1.0, 0.0;
+                0.0, 0.0, 0.0, 1.0;
+            ]
+            .as_slice(),
+        );
+
+        // Wall
+        self.gl_program.uniform_matrix_4_f32_slice(
+            "model_transform",
+            (na::geometry::Translation3::new(-0.5, 0.0, 0.0).to_homogeneous()
+                * na::geometry::Scale3::new(0.1, 4.0, 1.0).to_homogeneous())
+            .as_slice(),
+        );
+        self.rect_mesh.draw();
+
+        // Spring
+        self.gl_program.uniform_matrix_4_f32_slice(
+            "model_transform",
+            (na::geometry::Translation3::new(-0.5, 0.0, 0.0).to_homogeneous()
+                * na::geometry::Scale3::new(1.0 + 2.0 * state.position as f32, 0.1, 1.0)
+                    .to_homogeneous()
+                * na::geometry::Translation3::new(0.25, 0.0, 0.0).to_homogeneous())
+            .as_slice(),
+        );
+        self.rect_mesh.draw();
+
+        // Box
+        self.gl_program.uniform_matrix_4_f32_slice(
+            "model_transform",
+            (na::geometry::Translation3::new(state.position as f32, 0.0, 0.0).to_homogeneous()
+                * na::geometry::Scale3::new(0.5, 0.5, 1.0).to_homogeneous())
+            .as_slice(),
+        );
+        self.rect_mesh.draw();
     }
 
     fn update(&mut self) {
