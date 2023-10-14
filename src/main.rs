@@ -10,23 +10,35 @@ fn main() {
 
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, window.clone_gl(), None);
 
-    let spring = Spring::new(window.clone_gl());
-    let presenters: [Box<dyn Presenter>; 1] = [Box::new(spring)];
-    let current_presenter = presenters[0].as_ref();
+    let spring = Spring::new(window.clone_gl(), 0.1, 1);
+    let mut presenters: [Box<dyn Presenter>; 1] = [Box::new(spring)];
+
+    let mut pause = false;
+    let current_presenter = presenters[0].as_mut();
 
     event_loop.run_return(move |event, _, control_flow| {
         match event {
             winit::event::Event::RedrawRequested(_) => {
+                if !pause {
+                    current_presenter.update();
+                }
+
                 let repaint_after = egui_glow.run(window.window(), |egui_ctx| {
                     egui::SidePanel::left("Side panel")
                         .min_width(100.0)
                         .max_width(500.0)
                         .default_width(400.0)
                         .show(egui_ctx, |ui| {
-                            ui.heading(current_presenter.name());
-                            ui.separator();
+                            egui::ScrollArea::vertical().show(ui, |ui| {
+                                ui.heading(current_presenter.name());
+                                if ui.button("Pause").clicked() {
+                                    pause = !pause;
+                                }
 
-                            current_presenter.show_side_ui(ui);
+                                ui.separator();
+
+                                current_presenter.show_side_ui(ui);
+                            })
                         });
 
                     egui::TopBottomPanel::bottom("Bottom panel")
@@ -34,7 +46,9 @@ fn main() {
                         .min_height(100.0)
                         .default_height(300.0)
                         .show(egui_ctx, |ui| {
-                            current_presenter.show_bottom_ui(ui);
+                            egui::ScrollArea::vertical().show(ui, |ui| {
+                                current_presenter.show_bottom_ui(ui);
+                            })
                         });
                 });
 
@@ -89,8 +103,7 @@ fn main() {
             }) => {
                 window.window().request_redraw();
             }
-
-            _ => (),
+            _ => window.window().request_redraw(),
         }
     });
 }
