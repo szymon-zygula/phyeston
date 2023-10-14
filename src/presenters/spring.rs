@@ -7,6 +7,7 @@ use super::{
 };
 use crate::{
     numerics::EulerODESolver,
+    render::gl_program::GlProgram,
     simulators::spring::{self, SpringODE, SpringState},
 };
 use egui::{containers::ComboBox, Rgba, Ui};
@@ -25,6 +26,8 @@ macro_rules! state_graph {
 
 pub struct Spring {
     gl: Arc<glow::Context>,
+    gl_program: GlProgram,
+
     steps_per_frame: usize,
     euler: EulerODESolver<spring::F, 2, SpringODE>,
     states: Vec<SpringState>,
@@ -45,6 +48,13 @@ impl Spring {
         );
 
         Spring {
+            gl_program: GlProgram::with_shader_names(
+                Arc::clone(&gl),
+                &[
+                    ("pass_frag", glow::FRAGMENT_SHADER),
+                    ("2d_vert", glow::VERTEX_SHADER),
+                ],
+            ),
             gl,
             steps_per_frame,
             euler: EulerODESolver::new(delta, ode),
@@ -259,7 +269,9 @@ impl Presenter for Spring {
         });
     }
 
-    fn draw(&self) {}
+    fn draw(&self) {
+
+    }
 
     fn update(&mut self) {
         self.states.reserve(self.steps_per_frame);
