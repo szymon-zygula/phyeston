@@ -1,6 +1,6 @@
 use egui_winit::winit::{self, platform::run_return::EventLoopExtRunReturn};
 use phyesthon::{
-    presenters::{spring::Spring, Presenter},
+    presenters::{spring::SpringBuilder, Presenter, PresenterBuilder},
     window::Window,
 };
 
@@ -10,10 +10,11 @@ fn main() {
 
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, window.clone_gl(), None);
 
-    let spring = Spring::new(window.clone_gl(), 0.1, 1);
-    let mut presenters: [Box<dyn Presenter>; 1] = [Box::new(spring)];
+    let spring_builder = SpringBuilder::new();
+    let mut presenters: [Box<dyn Presenter>; 1] =
+        [Box::new(spring_builder.build(window.clone_gl()))];
 
-    let mut pause = false;
+    let mut pause = true;
     let current_presenter = presenters[0].as_mut();
 
     event_loop.run_return(move |event, _, control_flow| match event {
@@ -54,9 +55,9 @@ fn render(
     egui_glow: &mut egui_glow::EguiGlow,
     current_presenter: &mut dyn Presenter,
     window: &Window,
-    pause: &mut bool,
+    paused: &mut bool,
 ) {
-    if !*pause {
+    if !*paused {
         current_presenter.update();
     }
 
@@ -68,8 +69,9 @@ fn render(
             .show(egui_ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.heading(current_presenter.name());
-                    if ui.button("Pause").clicked() {
-                        *pause = !*pause;
+                    let text = if *paused { "Play" } else { "Pause" };
+                    if ui.button(text).clicked() {
+                        *paused = !*paused;
                     }
 
                     ui.separator();

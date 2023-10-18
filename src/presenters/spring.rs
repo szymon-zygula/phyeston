@@ -3,7 +3,7 @@ use super::{
         constant_function, sine, step_function, step_sine, ConstantFunction,
         ParametrizableFunction, Sine, StepFunction, StepSine,
     },
-    Presenter,
+    Presenter, PresenterBuilder,
 };
 use crate::{
     numerics::EulerODESolver,
@@ -14,7 +14,7 @@ use crate::{
     },
     simulators::spring::{self, SpringODE, SpringState},
 };
-use egui::{containers::ComboBox, Rgba, Ui};
+use egui::{containers::ComboBox, Rgba, Slider, Ui};
 use egui_plot::{Corner, Legend, Line, Plot, PlotPoints};
 use itertools::Itertools;
 use nalgebra as na;
@@ -33,7 +33,8 @@ pub struct Spring {
     gl_program: GlProgram,
     rect_mesh: GlMesh,
 
-    steps_per_frame: usize,
+    simulation_speed: spring::F,
+    pending_steps: spring::F,
     euler: EulerODESolver<spring::F, 2, SpringODE>,
     states: Vec<SpringState>,
     outer_force_functions: Vec<Box<dyn ParametrizableFunction<F = spring::F>>>,
@@ -42,18 +43,19 @@ pub struct Spring {
 }
 
 impl Spring {
-    pub fn new(gl: Arc<glow::Context>, delta: spring::F, steps_per_frame: usize) -> Self {
+    pub fn new(gl: Arc<glow::Context>, position: spring::F, velocity: spring::F) -> Self {
         let ode = SpringODE::new(
             1.0,
             Box::new(|_| 1.0),
-            2.0,
-            0.0,
+            position,
+            velocity,
             1.0,
             0.2,
             Box::new(|_| 0.0),
         );
 
         Spring {
+            states: vec![ode.state()],
             rect_mesh: Self::create_rect_mesh(Arc::clone(&gl)),
             gl_program: GlProgram::with_shader_names(
                 gl,
@@ -62,9 +64,9 @@ impl Spring {
                     ("2d_vert", glow::VERTEX_SHADER),
                 ],
             ),
-            steps_per_frame,
-            euler: EulerODESolver::new(delta, ode),
-            states: Vec::new(),
+            simulation_speed: 0.01,
+            pending_steps: 1.0,
+            euler: EulerODESolver::new(0.001, ode),
             outer_force_functions: Self::create_outer_force_functions(),
             selected_outer_force_idx: 0,
             last_clear_t: 0.0,
@@ -215,7 +217,11 @@ impl Spring {
     }
 
     fn bottom_data_aspect(&self) -> f32 {
-        0.05 * self.states.last().map(|s| s.t - self.last_clear_t).unwrap_or(1.0) as f32
+        0.05 * self
+            .states
+            .last()
+            .map(|s| s.t - self.last_clear_t)
+            .unwrap_or(1.0) as f32
     }
 
     fn current_state(&self) -> Option<&SpringState> {
@@ -230,6 +236,39 @@ impl Spring {
                 ui.label(format!("{name}: {val:.5}"));
             }
         }
+    }
+
+    fn parameters_ui(&mut self, ui: &mut Ui) {
+        let ode = &mut self.euler.ode;
+        ui.add(
+            Slider::new(&mut ode.mass, 0.01..=10.0)
+                .logarithmic(true)
+                .text("Mass"),
+        );
+
+        ui.add(
+            Slider::new(&mut ode.spring_constant, 0.01..=5.0)
+                .logarithmic(true)
+                .text("Spring constant"),
+        );
+
+        ui.add(
+            Slider::new(&mut ode.damping_factor, 0.01..=5.0)
+                .logarithmic(true)
+                .text("Damping factor"),
+        );
+
+        ui.add(
+            Slider::new(&mut self.euler.delta, 0.001..=0.1)
+                .logarithmic(true)
+                .text("Delta"),
+        );
+
+        ui.add(
+            Slider::new(&mut self.simulation_speed, 0.0001..=10.0)
+                .logarithmic(true)
+                .text("Simulation speed"),
+        );
     }
 
     fn current_outer_force(&self) -> &dyn ParametrizableFunction<F = spring::F> {
@@ -257,8 +296,7 @@ impl Spring {
             });
 
         if changed {
-            *self.euler.ode_mut().outer_force_function_mut() =
-                self.current_outer_force().produce_closure();
+            self.euler.ode.outer_force = self.current_outer_force().produce_closure();
         }
     }
 
@@ -277,6 +315,7 @@ impl Presenter for Spring {
     fn show_side_ui(&mut self, ui: &mut Ui) {
         self.clear_ui(ui);
         self.show_info(ui);
+        self.parameters_ui(ui);
         self.force_selection(ui);
         ui.vertical_centered(|ui| {
             self.state_space_graph(ui);
@@ -340,14 +379,51 @@ impl Presenter for Spring {
     }
 
     fn update(&mut self) {
-        self.states.reserve(self.steps_per_frame);
-        for _ in 0..self.steps_per_frame {
+        self.pending_steps += self.simulation_speed / self.euler.delta;
+
+        let steps_to_do = self.pending_steps.trunc() as usize;
+        self.pending_steps = self.pending_steps.fract();
+
+        self.states.reserve(steps_to_do);
+        for _ in 0..steps_to_do {
             self.euler.step();
-            self.states.push(self.euler.ode().state());
+            self.states.push(self.euler.ode.state());
         }
     }
 
     fn name(&self) -> &'static str {
         "Spring"
+    }
+}
+
+pub struct SpringBuilder {
+    velocity: spring::F,
+    position: spring::F,
+}
+
+impl SpringBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl PresenterBuilder for SpringBuilder {
+    type Target = Spring;
+    fn build_ui(&mut self, ui: &mut Ui) {
+        ui.add(Slider::new(&mut self.position, -5.0..=5.0).text("Position"));
+        ui.add(Slider::new(&mut self.velocity, -10.0..=10.0).text("Velocity"));
+    }
+
+    fn build(&self, gl: Arc<glow::Context>) -> Self::Target {
+        Spring::new(gl, self.position, self.velocity)
+    }
+}
+
+impl Default for SpringBuilder {
+    fn default() -> Self {
+        Self {
+            velocity: 0.0,
+            position: 0.0,
+        }
     }
 }

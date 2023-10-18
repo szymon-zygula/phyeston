@@ -4,20 +4,6 @@ use struct_iterable::Iterable;
 
 pub type F = f64;
 
-pub struct SpringODE {
-    t: F,
-
-    mass: F,
-    equilibrium: FloatFn<F>,
-
-    position: F,
-    velocity: F,
-
-    spring_characteristic: F,
-    damping_factor: F,
-    outer_force: FloatFn<F>,
-}
-
 #[derive(Clone, Debug, Iterable)]
 pub struct SpringState {
     pub t: F,
@@ -42,13 +28,27 @@ impl SpringState {
     }
 }
 
+pub struct SpringODE {
+    t: F,
+
+    pub mass: F,
+    pub equilibrium: FloatFn<F>,
+
+    position: F,
+    velocity: F,
+
+    pub spring_constant: F,
+    pub damping_factor: F,
+    pub outer_force: FloatFn<F>,
+}
+
 impl SpringODE {
     pub fn new(
         mass: F,
         equilibrium: FloatFn<F>,
         position: F,
         velocity: F,
-        spring_characteristic: F,
+        spring_constant: F,
         damping_factor: F,
         outer_force: FloatFn<F>,
     ) -> Self {
@@ -58,7 +58,7 @@ impl SpringODE {
             equilibrium,
             position,
             velocity,
-            spring_characteristic,
+            spring_constant,
             damping_factor,
             outer_force,
         }
@@ -89,16 +89,12 @@ impl SpringODE {
         (self.outer_force)(self.t)
     }
 
-    pub fn outer_force_function_mut(&mut self) -> &mut FloatFn<F> {
-        &mut self.outer_force
-    }
-
     pub fn damping_force(&self) -> F {
         -self.damping_factor * self.velocity
     }
 
     pub fn spring_force(&self) -> F {
-        self.spring_characteristic * (self.equilibrium() - self.position)
+        self.spring_constant * (self.equilibrium() - self.position)
     }
 
     pub fn equilibrium(&self) -> F {

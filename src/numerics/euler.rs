@@ -1,8 +1,8 @@
 use super::{ode::ODE, Float};
 
 pub struct EulerODESolver<F: Float, const DIM_OUT: usize, O: ODE<F, DIM_OUT>> {
-    delta: F,
-    ode: O,
+    pub delta: F,
+    pub ode: O,
 }
 
 impl<F: Float, const DIM_OUT: usize, O: ODE<F, DIM_OUT>> EulerODESolver<F, DIM_OUT, O> {
@@ -18,19 +18,7 @@ impl<F: Float, const DIM_OUT: usize, O: ODE<F, DIM_OUT>> EulerODESolver<F, DIM_O
         self.ode.set_y(new_y);
     }
 
-    pub fn ode(&self) -> &O {
-        &self.ode
-    }
-
-    pub fn ode_mut(&mut self) -> &mut O {
-        &mut self.ode
-    }
-
     pub fn take_ode(self) -> O {
         self.ode
-    }
-
-    pub fn step_mut(&mut self) -> &mut F {
-        &mut self.delta
     }
 }
