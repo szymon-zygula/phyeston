@@ -37,8 +37,10 @@ pub struct Spring {
     pending_steps: spring::F,
     euler: EulerODESolver<spring::F, 2, SpringODE>,
     states: Vec<SpringState>,
-    outer_force_functions: Vec<Box<dyn ParametrizableFunction<F = spring::F>>>,
-    selected_outer_force_idx: usize,
+    selectable_external_forces: Vec<Box<dyn ParametrizableFunction<F = spring::F>>>,
+    selectable_equilibriums: Vec<Box<dyn ParametrizableFunction<F = spring::F>>>,
+    selected_external_force_idx: usize,
+    selected_equilibrium_idx: usize,
     last_clear_t: spring::F,
 }
 
@@ -46,7 +48,7 @@ impl Spring {
     pub fn new(gl: Arc<glow::Context>, position: spring::F, velocity: spring::F) -> Self {
         let ode = SpringODE::new(
             1.0,
-            Box::new(|_| 1.0),
+            Box::new(|_| 0.0),
             position,
             velocity,
             1.0,
@@ -64,16 +66,18 @@ impl Spring {
                     ("2d_vert", glow::VERTEX_SHADER),
                 ],
             ),
-            simulation_speed: 0.01,
+            simulation_speed: 0.1,
             pending_steps: 1.0,
-            euler: EulerODESolver::new(0.001, ode),
-            outer_force_functions: Self::create_outer_force_functions(),
-            selected_outer_force_idx: 0,
+            euler: EulerODESolver::new(0.01, ode),
+            selectable_external_forces: Self::create_selectable_functions(),
+            selectable_equilibriums: Self::create_selectable_functions(),
+            selected_external_force_idx: 0,
+            selected_equilibrium_idx: 0,
             last_clear_t: 0.0,
         }
     }
 
-    fn create_outer_force_functions() -> Vec<Box<dyn ParametrizableFunction<F = spring::F>>> {
+    fn create_selectable_functions() -> Vec<Box<dyn ParametrizableFunction<F = spring::F>>> {
         let functions: Vec<Box<dyn ParametrizableFunction<F = spring::F>>> = vec![
             Box::new(ConstantFunction::new(
                 0.0,
@@ -153,7 +157,7 @@ impl Spring {
             .color(Rgba::from_rgb(0.5, 0.75, 0.0))
             .name("Damping");
 
-        let outer = Line::new(state_graph!(self.states, outer_force))
+        let outer = Line::new(state_graph!(self.states, external_force))
             .color(Rgba::from_rgb(0.75, 0.0, 0.5))
             .name("Outer");
 
@@ -271,23 +275,31 @@ impl Spring {
         );
     }
 
-    fn current_outer_force(&self) -> &dyn ParametrizableFunction<F = spring::F> {
-        self.outer_force_functions[self.selected_outer_force_idx].as_ref()
+    fn current_external_force(&self) -> &dyn ParametrizableFunction<F = spring::F> {
+        self.selectable_external_forces[self.selected_external_force_idx].as_ref()
     }
 
-    fn current_outer_force_mut(&mut self) -> &mut dyn ParametrizableFunction<F = spring::F> {
-        self.outer_force_functions[self.selected_outer_force_idx].as_mut()
+    fn current_external_force_mut(&mut self) -> &mut dyn ParametrizableFunction<F = spring::F> {
+        self.selectable_external_forces[self.selected_external_force_idx].as_mut()
+    }
+
+    fn current_equilibrium(&self) -> &dyn ParametrizableFunction<F = spring::F> {
+        self.selectable_equilibriums[self.selected_equilibrium_idx].as_ref()
+    }
+
+    fn current_equilibrium_mut(&mut self) -> &mut dyn ParametrizableFunction<F = spring::F> {
+        self.selectable_equilibriums[self.selected_equilibrium_idx].as_mut()
     }
 
     fn force_selection(&mut self, ui: &mut Ui) {
-        let mut changed = self.current_outer_force_mut().manipulation_ui(ui);
+        let mut changed = self.current_external_force_mut().manipulation_ui(ui);
 
-        ComboBox::from_label("Outer force function")
-            .selected_text(self.current_outer_force().name())
+        ComboBox::from_label("External force function")
+            .selected_text(self.current_external_force().name())
             .show_ui(ui, |ui| {
-                for (i, f) in self.outer_force_functions.iter().enumerate() {
+                for (i, f) in self.selectable_external_forces.iter().enumerate() {
                     if ui
-                        .selectable_value(&mut self.selected_outer_force_idx, i, f.name())
+                        .selectable_value(&mut self.selected_external_force_idx, i, f.name())
                         .clicked()
                     {
                         changed = true;
@@ -296,12 +308,33 @@ impl Spring {
             });
 
         if changed {
-            self.euler.ode.outer_force = self.current_outer_force().produce_closure();
+            self.euler.ode.external_force = self.current_external_force().produce_closure();
         }
     }
 
-    fn clear_ui(&mut self, ui: &mut Ui) {
-        if ui.button("Clear").clicked() {
+    fn equilibrium_selection(&mut self, ui: &mut Ui) {
+        let mut changed = self.current_equilibrium_mut().manipulation_ui(ui);
+
+        ComboBox::from_label("Equilibrium selection")
+            .selected_text(self.current_equilibrium().name())
+            .show_ui(ui, |ui| {
+                for (i, f) in self.selectable_equilibriums.iter().enumerate() {
+                    if ui
+                        .selectable_value(&mut self.selected_equilibrium_idx, i, f.name())
+                        .clicked()
+                    {
+                        changed = true;
+                    }
+                }
+            });
+
+        if changed {
+            self.euler.ode.equilibrium = self.current_equilibrium().produce_closure();
+        }
+    }
+
+    fn clear_graphs_ui(&mut self, ui: &mut Ui) {
+        if ui.button("Clear graphs").clicked() {
             self.clear();
         }
     }
@@ -313,10 +346,11 @@ impl Spring {
 
 impl Presenter for Spring {
     fn show_side_ui(&mut self, ui: &mut Ui) {
-        self.clear_ui(ui);
+        self.clear_graphs_ui(ui);
         self.show_info(ui);
         self.parameters_ui(ui);
         self.force_selection(ui);
+        self.equilibrium_selection(ui);
         ui.vertical_centered(|ui| {
             self.state_space_graph(ui);
         });
@@ -408,14 +442,13 @@ impl SpringBuilder {
 }
 
 impl PresenterBuilder for SpringBuilder {
-    type Target = Spring;
     fn build_ui(&mut self, ui: &mut Ui) {
         ui.add(Slider::new(&mut self.position, -5.0..=5.0).text("Position"));
         ui.add(Slider::new(&mut self.velocity, -10.0..=10.0).text("Velocity"));
     }
 
-    fn build(&self, gl: Arc<glow::Context>) -> Self::Target {
-        Spring::new(gl, self.position, self.velocity)
+    fn build(&self, gl: Arc<glow::Context>) -> Box<dyn Presenter> {
+        Box::new(Spring::new(gl, self.position, self.velocity))
     }
 }
 

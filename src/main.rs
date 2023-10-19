@@ -10,16 +10,21 @@ fn main() {
 
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, window.clone_gl(), None);
 
-    let spring_builder = SpringBuilder::new();
-    let mut presenters: [Box<dyn Presenter>; 1] =
-        [Box::new(spring_builder.build(window.clone_gl()))];
+    let mut current_builder = SpringBuilder::new();
+    let mut presenters: [Box<dyn Presenter>; 1] = [current_builder.build(window.clone_gl())];
 
     let mut pause = true;
-    let current_presenter = presenters[0].as_mut();
+    let current_presenter = &mut presenters[0];
 
     event_loop.run_return(move |event, _, control_flow| match event {
         winit::event::Event::RedrawRequested(_) => {
-            render(&mut egui_glow, current_presenter, &window, &mut pause);
+            render(
+                &mut egui_glow,
+                current_presenter,
+                &mut current_builder,
+                &window,
+                &mut pause,
+            );
         }
         winit::event::Event::WindowEvent { event, .. } => {
             use winit::event::WindowEvent;
@@ -53,7 +58,8 @@ fn main() {
 
 fn render(
     egui_glow: &mut egui_glow::EguiGlow,
-    current_presenter: &mut dyn Presenter,
+    current_presenter: &mut Box<dyn Presenter>,
+    current_builder: &mut dyn PresenterBuilder,
     window: &Window,
     paused: &mut bool,
 ) {
@@ -72,6 +78,13 @@ fn render(
                     let text = if *paused { "Play" } else { "Pause" };
                     if ui.button(text).clicked() {
                         *paused = !*paused;
+                    }
+
+                    ui.separator();
+
+                    current_builder.build_ui(ui);
+                    if ui.button("Reset").clicked() {
+                        *current_presenter = current_builder.build(window.clone_gl());
                     }
 
                     ui.separator();

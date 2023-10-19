@@ -10,7 +10,6 @@ pub trait Presenter {
 }
 
 pub trait PresenterBuilder {
-    type Target;
     fn build_ui(&mut self, ui: &mut egui::Ui);
-    fn build(&self, gl: std::sync::Arc<glow::Context>) -> Self::Target;
+    fn build(&self, gl: std::sync::Arc<glow::Context>) -> Box<dyn Presenter>;
 }

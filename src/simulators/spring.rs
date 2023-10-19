@@ -14,7 +14,7 @@ pub struct SpringState {
 
     pub spring_force: F,
     pub damping_force: F,
-    pub outer_force: F,
+    pub external_force: F,
     pub total_force: F,
 
     pub equilibrium: F,
@@ -39,7 +39,7 @@ pub struct SpringODE {
 
     pub spring_constant: F,
     pub damping_factor: F,
-    pub outer_force: FloatFn<F>,
+    pub external_force: FloatFn<F>,
 }
 
 impl SpringODE {
@@ -50,7 +50,7 @@ impl SpringODE {
         velocity: F,
         spring_constant: F,
         damping_factor: F,
-        outer_force: FloatFn<F>,
+        external_force: FloatFn<F>,
     ) -> Self {
         Self {
             t: 0.0,
@@ -60,7 +60,7 @@ impl SpringODE {
             velocity,
             spring_constant,
             damping_factor,
-            outer_force,
+            external_force,
         }
     }
 
@@ -74,7 +74,7 @@ impl SpringODE {
 
             spring_force: self.spring_force(),
             damping_force: self.damping_force(),
-            outer_force: self.outer_force(),
+            external_force: self.external_force(),
             total_force: self.total_force(),
 
             equilibrium: self.equilibrium(),
@@ -82,11 +82,11 @@ impl SpringODE {
     }
 
     pub fn total_force(&self) -> F {
-        self.spring_force() + self.damping_force() + self.outer_force()
+        self.spring_force() + self.damping_force() + self.external_force()
     }
 
-    pub fn outer_force(&self) -> F {
-        (self.outer_force)(self.t)
+    pub fn external_force(&self) -> F {
+        (self.external_force)(self.t)
     }
 
     pub fn damping_force(&self) -> F {
