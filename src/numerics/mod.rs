@@ -1,9 +1,11 @@
 use nalgebra as na;
 
 pub mod euler;
-pub use euler::*;
+pub use euler::EulerODESolver;
 pub mod ode;
-pub use ode::*;
+pub use ode::ODE;
+pub mod runge_kutta;
+pub use runge_kutta::RungeKuttaIV;
 
 pub trait Float:
     std::ops::AddAssign
