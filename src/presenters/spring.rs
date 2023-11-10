@@ -59,13 +59,7 @@ impl Spring {
         Spring {
             states: vec![ode.state()],
             rect_mesh: Self::create_rect_mesh(Arc::clone(&gl)),
-            gl_program: GlProgram::with_shader_names(
-                gl,
-                &[
-                    ("pass_frag", glow::FRAGMENT_SHADER),
-                    ("2d_vert", glow::VERTEX_SHADER),
-                ],
-            ),
+            gl_program: GlProgram::vertex_fragment(gl, "2d_vert", "pass_frag"),
             simulation_speed: 0.1,
             pending_steps: 1.0,
             euler: EulerODESolver::new(0.01, ode),

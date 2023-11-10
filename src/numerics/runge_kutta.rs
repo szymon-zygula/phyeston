@@ -40,7 +40,20 @@ impl<const DIM_OUT: usize, O: PlainODE<DIM_OUT>> Solver<DIM_OUT, O> for RungeKut
         }
     }
 
+    fn replace_ode(&mut self, mut ode: O) -> O {
+        std::mem::swap(&mut self.ode, &mut ode);
+        ode
+    }
+
     fn take_ode(self) -> O {
         self.ode
+    }
+
+    fn ode_mut(&mut self) -> &mut O {
+        &mut self.ode
+    }
+
+    fn ode(&self) -> &O {
+        &self.ode
     }
 }

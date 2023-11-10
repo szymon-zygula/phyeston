@@ -4,3 +4,4 @@ pub mod gl_program;
 pub mod mesh;
 pub mod opengl;
 pub mod shader;
+pub mod models;

@@ -26,5 +26,8 @@ pub trait ODE<F: Float, const DIM_OUT: usize> {
 /// Ordinary Differential Equation Solver
 pub trait Solver<const DIM_OUT: usize, O: PlainODE<DIM_OUT>> {
     fn step(&self, state: &State<DIM_OUT>) -> State<DIM_OUT>;
+    fn replace_ode(&mut self, ode: O) -> O;
     fn take_ode(self) -> O;
+    fn ode_mut(&mut self) -> &mut O;
+    fn ode(&self) -> &O;
 }

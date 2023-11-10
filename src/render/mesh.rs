@@ -79,6 +79,13 @@ impl<V: Vertex> Mesh<V> {
             triangles,
         }
     }
+
+    pub fn empty() -> Self {
+        Self {
+            vertices: Vec::new(),
+            triangles: Vec::new(),
+        }
+    }
 }
 
 pub struct GlMesh {

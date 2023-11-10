@@ -1,6 +1,9 @@
+use egui::containers::ComboBox;
 use egui_winit::winit::{self, platform::run_return::EventLoopExtRunReturn};
 use phyesthon::{
-    presenters::{spring::SpringBuilder, Presenter, PresenterBuilder},
+    presenters::{
+        spinning_top::SpinningTopBuilder, spring::SpringBuilder, Presenter, PresenterBuilder,
+    },
     window::Window,
 };
 
@@ -10,18 +13,27 @@ fn main() {
 
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, window.clone_gl(), None);
 
-    let mut current_builder = SpringBuilder::new();
-    let mut presenters: [Box<dyn Presenter>; 1] = [current_builder.build(window.clone_gl())];
+    let mut builders: Vec<Box<dyn PresenterBuilder>> = vec![
+        Box::new(SpinningTopBuilder::new()),
+        Box::new(SpringBuilder::new()),
+    ];
+
+    let mut presenters: Vec<Box<dyn Presenter>> = builders
+        .iter()
+        .map(|builder| builder.build(window.clone_gl()))
+        .collect();
+
+    let mut current_presenter = 0;
 
     let mut pause = true;
-    let current_presenter = &mut presenters[0];
 
     event_loop.run_return(move |event, _, control_flow| match event {
         winit::event::Event::RedrawRequested(_) => {
             render(
                 &mut egui_glow,
-                current_presenter,
-                &mut current_builder,
+                &mut current_presenter,
+                &mut presenters,
+                &mut builders,
                 &window,
                 &mut pause,
             );
@@ -58,50 +70,25 @@ fn main() {
 
 fn render(
     egui_glow: &mut egui_glow::EguiGlow,
-    current_presenter: &mut Box<dyn Presenter>,
-    current_builder: &mut dyn PresenterBuilder,
+    current_presenter: &mut usize,
+    presenters: &mut [Box<dyn Presenter>],
+    builders: &mut [Box<dyn PresenterBuilder>],
     window: &Window,
     paused: &mut bool,
 ) {
     if !*paused {
-        current_presenter.update();
+        presenters[*current_presenter].update();
     }
 
     let repaint_after = egui_glow.run(window.window(), |egui_ctx| {
-        egui::SidePanel::left("Side panel")
-            .min_width(100.0)
-            .max_width(500.0)
-            .default_width(400.0)
-            .show(egui_ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    ui.heading(current_presenter.name());
-                    let text = if *paused { "Play" } else { "Pause" };
-                    if ui.button(text).clicked() {
-                        *paused = !*paused;
-                    }
-
-                    ui.separator();
-
-                    current_builder.build_ui(ui);
-                    if ui.button("Reset").clicked() {
-                        *current_presenter = current_builder.build(window.clone_gl());
-                    }
-
-                    ui.separator();
-
-                    current_presenter.show_side_ui(ui);
-                })
-            });
-
-        egui::TopBottomPanel::bottom("Bottom panel")
-            .max_height(400.0)
-            .min_height(100.0)
-            .default_height(300.0)
-            .show(egui_ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    current_presenter.show_bottom_ui(ui);
-                })
-            });
+        draw_ui(
+            current_presenter,
+            presenters,
+            builders,
+            window,
+            paused,
+            egui_ctx,
+        );
     });
 
     if repaint_after.is_zero() {
@@ -120,7 +107,8 @@ fn render(
         .size()
         .map(|p| p.width as f32 / p.height as f32)
         .unwrap_or(1.0);
-    current_presenter.draw(aspect_ratio);
+
+    presenters[*current_presenter].draw(aspect_ratio);
 
     egui_glow.paint(window.window());
 
@@ -128,4 +116,57 @@ fn render(
 
     window.swap_buffers().unwrap();
     window.window().set_visible(true);
+}
+
+fn draw_ui(
+    current_presenter: &mut usize,
+    presenters: &mut [Box<dyn Presenter>],
+    builders: &mut [Box<dyn PresenterBuilder>],
+    window: &Window,
+    paused: &mut bool,
+    egui_ctx: &egui::Context,
+) {
+    egui::SidePanel::left("Side panel")
+        .min_width(100.0)
+        .max_width(500.0)
+        .default_width(400.0)
+        .show(egui_ctx, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ComboBox::from_label("Presenter selection")
+                    .selected_text(presenters[*current_presenter].name())
+                    .show_ui(ui, |ui| {
+                        for (i, f) in presenters.iter().enumerate() {
+                            ui.selectable_value(current_presenter, i, f.name());
+                        }
+                    });
+
+                ui.heading(presenters[*current_presenter].name());
+                let text = if *paused { "Play" } else { "Pause" };
+                if ui.button(text).clicked() {
+                    *paused = !*paused;
+                }
+
+                ui.separator();
+
+                builders[*current_presenter].build_ui(ui);
+                if ui.button("Reset").clicked() {
+                    presenters[*current_presenter] =
+                        builders[*current_presenter].build(window.clone_gl());
+                }
+
+                ui.separator();
+
+                presenters[*current_presenter].show_side_ui(ui);
+            })
+        });
+
+    egui::TopBottomPanel::bottom("Bottom panel")
+        .max_height(400.0)
+        .min_height(100.0)
+        .default_height(300.0)
+        .show(egui_ctx, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                presenters[*current_presenter].show_bottom_ui(ui);
+            })
+        });
 }

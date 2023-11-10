@@ -51,6 +51,16 @@ impl GlProgram {
         Self::with_shaders(gl, &shaders.iter().collect::<Vec<&Shader>>())
     }
 
+    pub fn vertex_fragment(gl: Arc<glow::Context>, vertex_name: &str, fragment_name: &str) -> Self {
+        Self::with_shader_names(
+            gl,
+            &[
+                (vertex_name, glow::VERTEX_SHADER),
+                (fragment_name, glow::FRAGMENT_SHADER),
+            ],
+        )
+    }
+
     fn_set_uniform!(&[f32], uniform_matrix_2_f32_slice);
     fn_set_uniform!(&[f32], uniform_matrix_3_f32_slice);
     fn_set_uniform!(&[f32], uniform_matrix_4_f32_slice);
@@ -80,6 +90,20 @@ impl GlProgram {
         unsafe {
             let location = self.gl.get_uniform_location(self.handle, name).unwrap();
             self.gl.uniform_3_f32(Some(&location), x, y, z);
+        }
+    }
+
+    pub fn uniform_4_f32(&self, name: &str, x: f32, y: f32, z: f32, w: f32) {
+        unsafe {
+            let location = self.gl.get_uniform_location(self.handle, name).unwrap();
+            self.gl.uniform_4_f32(Some(&location), x, y, z, w);
+        }
+    }
+
+    pub fn uniform_3_f32_slice(&self, name: &str, slice: &[f32]) {
+        unsafe {
+            let location = self.gl.get_uniform_location(self.handle, name).unwrap();
+            self.gl.uniform_3_f32_slice(Some(&location), slice);
         }
     }
 

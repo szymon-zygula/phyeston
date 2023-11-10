@@ -1,5 +1,6 @@
 pub mod parametrizable_function;
 pub mod spring;
+pub mod spinning_top;
 
 pub trait Presenter {
     fn show_bottom_ui(&mut self, ui: &mut egui::Ui);
