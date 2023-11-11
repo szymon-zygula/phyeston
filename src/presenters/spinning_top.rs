@@ -55,17 +55,24 @@ impl SpinningTop {
     const BOX_COLOR: na::Vector4<f32> = na::vector![0.2, 0.4, 0.8, 0.7];
     const PLANE_COLOR: na::Vector4<f32> = na::vector![0.8, 0.4, 0.2, 0.4];
 
-    const DEFAULT_DENSITY: f64 = 1.0;
+    const DEFAULT_DENSITY: f64 = 10.0;
     const DEFAULT_SIDE_LENGTH: f64 = 2.0;
-    const DEFAULT_MAX_TRAJECTORY_POINTS: usize = 1000;
+    const DEFAULT_MAX_TRAJECTORY_POINTS: usize = 10000;
     const MAX_TRAJECTORY_POINTS_LIMIT: usize = 1024 * 1024;
 
-    pub fn new(gl: Arc<glow::Context>, rotation: na::UnitQuaternion<f64>) -> Self {
+    pub fn new(
+        gl: Arc<glow::Context>,
+        rotation: na::UnitQuaternion<f64>,
+        angular_velocity: na::Vector3<f64>,
+    ) -> Self {
         let mut state = ode::State::<7> {
             t: 0.0,
             y: na::SVector::<f64, 7>::zeros(),
         };
 
+        state.y[0] = angular_velocity.x;
+        state.y[1] = angular_velocity.y;
+        state.y[2] = angular_velocity.z;
         state.y[3] = rotation.w;
         state.y[4] = rotation.i;
         state.y[5] = rotation.j;
@@ -279,6 +286,7 @@ impl SpinningTop {
 impl Presenter for SpinningTop {
     fn show_side_ui(&mut self, ui: &mut Ui) {
         ui.checkbox(&mut self.solver.ode_mut().enable_gravity, "Gravity");
+        ui.add(DragValue::new(&mut self.solver.ode_mut().gravity.y).clamp_range(f64::MIN..=0.0));
 
         ui.checkbox(&mut self.show_plane, "Show plane");
         ui.checkbox(&mut self.show_gravity_vector, "Show gravity vector");
@@ -301,7 +309,7 @@ impl Presenter for SpinningTop {
         let mut density = self.solver.ode().density();
         ui.label("Box density");
         if ui
-            .add(DragValue::new(&mut density).clamp_range(0.0..=f32::MAX))
+            .add(DragValue::new(&mut density).clamp_range(0.1..=f32::MAX))
             .changed()
         {
             self.solver.ode.set_density(density);
@@ -365,6 +373,7 @@ impl Presenter for SpinningTop {
 #[derive(Default)]
 pub struct SpinningTopBuilder {
     tilt: f64,
+    angular_velocity: f64,
 }
 
 impl SpinningTopBuilder {
@@ -382,14 +391,25 @@ impl PresenterBuilder for SpinningTopBuilder {
                 .speed(0.1)
                 .suffix("°"),
         );
+
+        ui.label("Angular veloctiy");
+        ui.add(
+            DragValue::new(&mut self.angular_velocity)
+                .clamp_range(0.0..=f64::MAX)
+                .speed(0.01),
+        );
     }
 
     fn build(&self, gl: Arc<glow::Context>) -> Box<dyn Presenter> {
-        let rotation = na::UnitQuaternion::from_axis_angle(
-            &na::UnitVector3::new_normalize(na::vector![-1.0, 0.0, 1.0]),
-            std::f64::consts::FRAC_PI_2 - f64::atan2(1.0, f64::sqrt(2.0)) + self.tilt.to_radians(),
-        );
+        let diagonal_angle = std::f64::consts::FRAC_PI_2 - f64::atan2(1.0, f64::sqrt(2.0));
+        let axis = na::UnitVector3::new_normalize(na::vector![-1.0, 0.0, 1.0]);
+        let rotation =
+            na::UnitQuaternion::from_axis_angle(&axis, diagonal_angle + self.tilt.to_radians());
 
-        Box::new(SpinningTop::new(gl, rotation))
+        let angular_velocity = self.angular_velocity
+            * na::Rotation3::from_axis_angle(&axis, std::f64::consts::FRAC_PI_2 - diagonal_angle)
+                .transform_vector(&na::vector![1.0, 0.0, 1.0]);
+
+        Box::new(SpinningTop::new(gl, rotation, angular_velocity))
     }
 }

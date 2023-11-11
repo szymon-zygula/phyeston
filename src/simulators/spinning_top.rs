@@ -16,7 +16,7 @@ impl SpinningTopODE {
     pub fn new(density: f64, side_length: f64) -> Self {
         let mut me = Self {
             inertia: Inertia::unit(),
-            gravity: na::Vector3::new(0.0, -100.0, 0.0),
+            gravity: na::Vector3::new(0.0, -10.0, 0.0),
             enable_gravity: true,
             density,
             side_length,
