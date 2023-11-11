@@ -1,6 +1,6 @@
 use super::{Presenter, PresenterBuilder};
 use crate::{
-    controls::camera::Camera,
+    controls::{camera::Camera, mouse::MouseState},
     numerics::{ode, RungeKuttaIV},
     render::{
         gl_drawable::GlDrawable,
@@ -42,8 +42,8 @@ pub struct SpinningTop {
 
 impl SpinningTop {
     const LIGHT_POSITION: na::Vector3<f32> = na::vector![3.0, 1.0, 1.0];
-    const LIGHT_COLOR: na::Vector3<f32> = na::vector![1.0, 1.0, 1.0];
-    const LIGHT_AMBIENT: na::Vector3<f32> = na::vector![0.2, 0.2, 0.2];
+    const LIGHT_COLOR: na::Vector3<f32> = na::vector![2.0, 2.0, 2.0];
+    const LIGHT_AMBIENT: na::Vector3<f32> = na::vector![0.4, 0.4, 0.4];
 
     const DEFAULT_DENSITY: f64 = 1.0;
 
@@ -191,11 +191,16 @@ impl Presenter for SpinningTop {
 
     fn update(&mut self) {}
 
+    fn update_mouse(&mut self, state: MouseState) {
+        self.camera.update_from_mouse(state);
+    }
+
     fn name(&self) -> &'static str {
         "Spinning Top"
     }
 }
 
+#[derive(Default)]
 pub struct SpinningTopBuilder {}
 
 impl SpinningTopBuilder {
@@ -205,15 +210,9 @@ impl SpinningTopBuilder {
 }
 
 impl PresenterBuilder for SpinningTopBuilder {
-    fn build_ui(&mut self, ui: &mut Ui) {}
+    fn build_ui(&mut self, _ui: &mut Ui) {}
 
     fn build(&self, gl: Arc<glow::Context>) -> Box<dyn Presenter> {
         Box::new(SpinningTop::new(gl))
-    }
-}
-
-impl Default for SpinningTopBuilder {
-    fn default() -> Self {
-        Self {}
     }
 }

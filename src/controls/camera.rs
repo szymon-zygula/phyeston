@@ -38,13 +38,13 @@ impl Camera {
         self.log_distance = linear_distance.ln();
     }
 
-    pub fn update_from_mouse(&mut self, mouse: &mut MouseState) -> bool {
+    pub fn update_from_mouse(&mut self, mut mouse: MouseState) -> bool {
         let mouse_delta = mouse.position_delta();
         let scroll_delta = mouse.scroll_delta();
 
         if mouse_delta.x != 0.0 || mouse_delta.y != 0.0 || scroll_delta != 0.0 {
-            self.update_angles(mouse, &mouse_delta);
-            self.update_center(mouse, &mouse_delta);
+            self.update_angles(&mouse, &mouse_delta);
+            self.update_center(&mouse, &mouse_delta);
 
             self.log_distance -= Self::SCROLL_SPEED * scroll_delta;
             self.log_distance = self

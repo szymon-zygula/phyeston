@@ -6,6 +6,7 @@ use super::{
     Presenter, PresenterBuilder,
 };
 use crate::{
+    controls::mouse::MouseState,
     numerics::EulerODESolver,
     render::{
         gl_drawable::GlDrawable,
@@ -422,6 +423,8 @@ impl Presenter for Spring {
     fn name(&self) -> &'static str {
         "Spring"
     }
+
+    fn update_mouse(&mut self, _state: MouseState) {}
 }
 
 pub struct SpringBuilder {

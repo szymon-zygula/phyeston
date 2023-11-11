@@ -1,6 +1,7 @@
 use egui::containers::ComboBox;
 use egui_winit::winit::{self, platform::run_return::EventLoopExtRunReturn};
 use phyesthon::{
+    controls::mouse::MouseState,
     presenters::{
         spinning_top::SpinningTopBuilder, spring::SpringBuilder, Presenter, PresenterBuilder,
     },
@@ -8,6 +9,7 @@ use phyesthon::{
 };
 
 fn main() {
+    let mut mouse = MouseState::new();
     let mut event_loop = winit::event_loop::EventLoopBuilder::with_user_event().build();
     let window = unsafe { Window::new(&event_loop) };
 
@@ -36,6 +38,7 @@ fn main() {
                 &mut builders,
                 &window,
                 &mut pause,
+                &mut mouse,
             );
         }
         winit::event::Event::WindowEvent { event, .. } => {
@@ -57,6 +60,8 @@ fn main() {
             if event_response.repaint {
                 window.window().request_redraw();
             }
+
+            mouse.handle_window_event(&event);
         }
         winit::event::Event::LoopDestroyed => {
             egui_glow.destroy();
@@ -75,10 +80,14 @@ fn render(
     builders: &mut [Box<dyn PresenterBuilder>],
     window: &Window,
     paused: &mut bool,
+    mouse: &mut MouseState,
 ) {
     if !*paused {
         presenters[*current_presenter].update();
     }
+
+    presenters[*current_presenter].update_mouse(*mouse);
+    mouse.update();
 
     let repaint_after = egui_glow.run(window.window(), |egui_ctx| {
         draw_ui(

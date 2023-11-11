@@ -31,9 +31,9 @@ impl Window {
 
         let config_template_builder = glutin::config::ConfigTemplateBuilder::new()
             .prefer_hardware_accelerated(None)
-            .with_depth_size(0)
-            .with_stencil_size(0)
-            .with_transparency(false);
+            .with_depth_size(24)
+            .with_stencil_size(8)
+            .with_transparency(true);
 
         let (mut window, gl_config) =
             glutin_winit::DisplayBuilder::new() // let glutin-winit helper crate handle the complex parts of opengl context creation
@@ -156,7 +156,9 @@ impl Window {
 
     pub fn clear(&self) {
         unsafe {
-            self.gl.clear(glow::COLOR_BUFFER_BIT);
+            self.gl.enable(glow::DEPTH_TEST);
+            self.gl
+                .clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
         }
     }
 }

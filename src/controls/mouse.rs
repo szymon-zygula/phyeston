@@ -93,6 +93,14 @@ impl MouseState {
         last_value
     }
 
+    pub fn update(&mut self) {
+        self.scroll_delta = 0.0;
+        self.previous_position = None;
+        self.left_button_pressed = false;
+        self.middle_button_pressed = false;
+        self.right_button_pressed = false;
+    }
+
     pub fn handle_window_event(&mut self, event: &WindowEvent) {
         match event {
             WindowEvent::MouseInput { state, button, .. } => match (state, button) {
