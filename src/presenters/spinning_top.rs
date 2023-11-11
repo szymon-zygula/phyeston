@@ -1,18 +1,22 @@
 use super::{Presenter, PresenterBuilder};
 use crate::{
     controls::{camera::Camera, mouse::MouseState},
-    numerics::{ode, RungeKuttaIV},
+    numerics::{
+        ode::{self, Solver},
+        RungeKuttaIV,
+    },
     render::{
         gl_drawable::GlDrawable,
         gl_program::GlProgram,
-        mesh::{GlLineStrip, GlTriangleMesh, Mesh, Triangle},
+        mesh::{GlLineStrip, GlTriangleMesh},
         models,
     },
     simulators::spinning_top::SpinningTopODE,
 };
-use egui::{containers::ComboBox, Rgba, Slider, Ui};
+use egui::{widgets::DragValue, Ui};
+use glow::HasContext;
 use nalgebra as na;
-use std::{f64::consts::PI, sync::Arc};
+use std::sync::Arc;
 
 pub struct SpinningTop {
     meshes_program: GlProgram,
@@ -21,7 +25,8 @@ pub struct SpinningTop {
 
     strips_program: GlProgram,
     gravity_strip: GlLineStrip,
-    path_strip: GlLineStrip,
+    trajectory_strip: GlLineStrip,
+    diagonal_strip: GlLineStrip,
 
     camera: Camera,
 
@@ -30,7 +35,6 @@ pub struct SpinningTop {
 
     density: f64,
 
-    enable_gravity: bool,
     show_trajectory: bool,
     show_plane: bool,
     show_gravity_vector: bool,
@@ -38,14 +42,23 @@ pub struct SpinningTop {
     show_diagonal: bool,
 
     max_trajectory_points: usize,
+
+    gl: Arc<glow::Context>,
 }
 
 impl SpinningTop {
     const LIGHT_POSITION: na::Vector3<f32> = na::vector![-2.0, 4.0, -2.0];
     const LIGHT_COLOR: na::Vector3<f32> = na::vector![2.0, 2.0, 2.0];
     const LIGHT_AMBIENT: na::Vector3<f32> = na::vector![0.4, 0.4, 0.4];
+    const PLANE_SCALE: f32 = 3.0;
+
+    const BOX_COLOR: na::Vector4<f32> = na::vector![0.2, 0.4, 0.8, 0.7];
+    const PLANE_COLOR: na::Vector4<f32> = na::vector![0.8, 0.4, 0.2, 0.4];
 
     const DEFAULT_DENSITY: f64 = 1.0;
+    const DEFAULT_SIDE_LENGTH: f64 = 2.0;
+    const DEFAULT_MAX_TRAJECTORY_POINTS: usize = 1000;
+    const MAX_TRAJECTORY_POINTS_LIMIT: usize = 1024 * 1024;
 
     pub fn new(gl: Arc<glow::Context>) -> Self {
         let mut state = ode::State::<7> {
@@ -76,25 +89,44 @@ impl SpinningTop {
             ),
             gravity_strip: GlLineStrip::new(
                 Arc::clone(&gl),
-                &vec![na::point![0.0, 0.0, 0.0], na::point![0.0, -1.0, 0.0]],
+                &[na::point![0.0, 0.0, 0.0], na::point![0.0, -1.0, 0.0]],
             ),
-            path_strip: GlLineStrip::new(Arc::clone(&gl), &Vec::new()),
+            trajectory_strip: GlLineStrip::with_capacity(
+                Arc::clone(&gl),
+                Self::DEFAULT_MAX_TRAJECTORY_POINTS,
+            ),
+            diagonal_strip: Self::diagonal_strip(Arc::clone(&gl)),
 
             camera: Camera::new(),
 
             state,
             density: Self::DEFAULT_DENSITY,
-            solver: RungeKuttaIV::new(0.01, SpinningTopODE::new(Self::DEFAULT_DENSITY)),
+            solver: RungeKuttaIV::new(
+                0.01,
+                SpinningTopODE::new(Self::DEFAULT_DENSITY, Self::DEFAULT_SIDE_LENGTH),
+            ),
 
-            enable_gravity: true,
             show_box: true,
             show_plane: true,
             show_gravity_vector: false,
             show_trajectory: false,
             show_diagonal: false,
 
-            max_trajectory_points: 1000,
+            max_trajectory_points: Self::DEFAULT_MAX_TRAJECTORY_POINTS,
+
+            gl,
         }
+    }
+
+    fn set_side_length(&mut self, side_length: f64) {
+        self.solver.ode_mut().set_side_length(side_length);
+    }
+
+    fn diagonal_strip(gl: Arc<glow::Context>) -> GlLineStrip {
+        GlLineStrip::new(
+            Arc::clone(&gl),
+            &[na::point![-1.0, -1.0, -1.0], na::point![1.0, 1.0, 1.0]],
+        )
     }
 
     fn box_transform(&self) -> na::Matrix4<f32> {
@@ -105,8 +137,13 @@ impl SpinningTop {
             self.state.y[6] as f32,
         ));
 
-        let translation = na::Translation3::new(1.0, 1.0, 1.0);
-        rotation.to_homogeneous() * translation.to_homogeneous()
+        let half_side_length = self.solver.ode().side_length() as f32 * 0.5;
+
+        let translation =
+            na::Translation3::new(half_side_length, half_side_length, half_side_length);
+        rotation.to_homogeneous()
+            * translation.to_homogeneous()
+            * na::Scale3::new(half_side_length, half_side_length, half_side_length).to_homogeneous()
     }
 
     fn draw_meshes(&self, aspect_ratio: f32) {
@@ -127,18 +164,18 @@ impl SpinningTop {
         self.meshes_program
             .uniform_3_f32_slice("ambient", Self::LIGHT_AMBIENT.as_slice());
 
-        if self.show_plane {
-            self.draw_plane();
-        }
-
         if self.show_box {
             self.draw_box();
+        }
+
+        if self.show_plane {
+            self.draw_plane();
         }
     }
 
     fn draw_box(&self) {
         self.meshes_program
-            .uniform_4_f32("material_color", 0.2, 0.4, 0.8, 1.0);
+            .uniform_4_f32_slice("material_color", Self::BOX_COLOR.as_slice());
         self.meshes_program.uniform_f32("material_diffuse", 0.8);
         self.meshes_program.uniform_f32("material_specular", 0.4);
         self.meshes_program
@@ -152,14 +189,18 @@ impl SpinningTop {
 
     fn draw_plane(&self) {
         self.meshes_program
-            .uniform_4_f32("material_color", 0.8, 0.4, 0.2, 1.0);
-        self.meshes_program.uniform_f32("material_diffuse", 0.8);
-        self.meshes_program.uniform_f32("material_specular", 0.4);
+            .uniform_4_f32_slice("material_color", Self::PLANE_COLOR.as_slice());
+        self.meshes_program.uniform_f32("material_diffuse", 0.4);
+        self.meshes_program.uniform_f32("material_specular", 0.2);
         self.meshes_program
-            .uniform_f32("material_specular_exp", 10.0);
+            .uniform_f32("material_specular_exp", 50.0);
 
-        self.meshes_program
-            .uniform_matrix_4_f32_slice("model_transform", na::Matrix4::identity().as_slice());
+        self.meshes_program.uniform_matrix_4_f32_slice(
+            "model_transform",
+            na::Scale3::new(Self::PLANE_SCALE, Self::PLANE_SCALE, Self::PLANE_SCALE)
+                .to_homogeneous()
+                .as_slice(),
+        );
 
         self.plane_mesh.draw();
     }
@@ -178,6 +219,14 @@ impl SpinningTop {
         if self.show_gravity_vector {
             self.draw_gravity_vector();
         }
+
+        if self.show_trajectory {
+            self.draw_trajectory();
+        }
+
+        if self.show_diagonal {
+            self.draw_diagonal();
+        }
     }
 
     fn draw_gravity_vector(&self) {
@@ -185,11 +234,29 @@ impl SpinningTop {
             .uniform_4_f32("color", 1.0, 1.0, 1.0, 1.0);
         self.gravity_strip.draw();
     }
+
+    fn draw_trajectory(&self) {
+        self.strips_program
+            .uniform_4_f32("color", 1.0, 1.0, 1.0, 1.0);
+        self.trajectory_strip.draw();
+    }
+
+    fn draw_diagonal(&self) {
+        unsafe { self.gl.disable(glow::DEPTH_TEST) };
+
+        self.strips_program
+            .uniform_matrix_4_f32_slice("model_transform", self.box_transform().as_slice());
+        self.strips_program
+            .uniform_4_f32("color", 0.5, 1.0, 0.5, 1.0);
+        self.diagonal_strip.draw();
+
+        unsafe { self.gl.enable(glow::DEPTH_TEST) };
+    }
 }
 
 impl Presenter for SpinningTop {
     fn show_side_ui(&mut self, ui: &mut Ui) {
-        ui.checkbox(&mut self.enable_gravity, "Gravity");
+        ui.checkbox(&mut self.solver.ode_mut().enable_gravity, "Gravity");
 
         ui.checkbox(&mut self.show_plane, "Show plane");
         ui.checkbox(&mut self.show_gravity_vector, "Show gravity vector");
@@ -198,12 +265,32 @@ impl Presenter for SpinningTop {
         ui.checkbox(&mut self.show_diagonal, "Show diagonal");
 
         ui.label("Maximum trajectory points visible");
-        ui.add(egui::widgets::DragValue::new(
-            &mut self.max_trajectory_points,
-        ));
+        if ui
+            .add(
+                DragValue::new(&mut self.max_trajectory_points)
+                    .clamp_range(2..=Self::MAX_TRAJECTORY_POINTS_LIMIT),
+            )
+            .changed()
+        {
+            self.trajectory_strip
+                .recapacitate(self.max_trajectory_points);
+        }
 
         ui.label("Box density");
-        ui.add(egui::widgets::DragValue::new(&mut self.density));
+        ui.add(DragValue::new(&mut self.density));
+
+        let mut side_length = self.solver.ode().side_length();
+        ui.label("Side length");
+        if ui
+            .add(
+                DragValue::new(&mut side_length)
+                    .clamp_range(0.001..=f64::MAX)
+                    .speed(0.01),
+            )
+            .changed()
+        {
+            self.set_side_length(side_length);
+        }
     }
 
     fn show_bottom_ui(&mut self, ui: &mut Ui) {
@@ -215,7 +302,28 @@ impl Presenter for SpinningTop {
         self.draw_strips(aspect_ratio);
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self) {
+        let mut new_state = self.solver.step(&self.state);
+        let new_rotation = na::UnitQuaternion::new_normalize(na::Quaternion::new(
+            new_state.y[3],
+            new_state.y[4],
+            new_state.y[5],
+            new_state.y[6],
+        ));
+
+        new_state.y[3] = new_rotation.w;
+        new_state.y[4] = new_rotation.i;
+        new_state.y[5] = new_rotation.j;
+        new_state.y[6] = new_rotation.k;
+
+        self.state = new_state;
+
+        let new_tip = self
+            .box_transform()
+            .transform_point(&na::point![1.0, 1.0, 1.0]);
+
+        self.trajectory_strip.push_vertex(&new_tip);
+    }
 
     fn update_mouse(&mut self, state: MouseState) {
         self.camera.update_from_mouse(state);

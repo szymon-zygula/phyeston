@@ -3,12 +3,12 @@ use nalgebra as na;
 
 pub fn cube() -> Mesh<ClassicVertex> {
     let vertices = vec![
-        // Top
+        // Front
         ClassicVertex::new(na::point![1.0, 1.0, 1.0], na::vector![0.0, 0.0, 1.0]),
         ClassicVertex::new(na::point![-1.0, 1.0, 1.0], na::vector![0.0, 0.0, 1.0]),
         ClassicVertex::new(na::point![-1.0, -1.0, 1.0], na::vector![0.0, 0.0, 1.0]),
         ClassicVertex::new(na::point![1.0, -1.0, 1.0], na::vector![0.0, 0.0, 1.0]),
-        // Bottom
+        // Back
         ClassicVertex::new(na::point![1.0, 1.0, -1.0], na::vector![0.0, 0.0, -1.0]),
         ClassicVertex::new(na::point![-1.0, 1.0, -1.0], na::vector![0.0, 0.0, -1.0]),
         ClassicVertex::new(na::point![-1.0, -1.0, -1.0], na::vector![0.0, 0.0, -1.0]),
@@ -36,16 +36,16 @@ pub fn cube() -> Mesh<ClassicVertex> {
     ];
 
     let triangles = vec![
-        // Top
+        // Front
         Triangle([0, 1, 2]),
         Triangle([3, 0, 2]),
-        // Bottom
+        // Back
         Triangle([5, 4, 6]),
         Triangle([4, 7, 6]),
-        // Front
+        // Top
         Triangle([9, 8, 10]),
         Triangle([8, 11, 10]),
-        // Back
+        // Bottom
         Triangle([12, 13, 14]),
         Triangle([15, 12, 14]),
         // Right

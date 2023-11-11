@@ -145,7 +145,12 @@ fn draw_ui(
                     .selected_text(presenters[*current_presenter].name())
                     .show_ui(ui, |ui| {
                         for (i, f) in presenters.iter().enumerate() {
-                            ui.selectable_value(current_presenter, i, f.name());
+                            if ui
+                                .selectable_value(current_presenter, i, f.name())
+                                .clicked()
+                            {
+                                *paused = true;
+                            }
                         }
                     });
 

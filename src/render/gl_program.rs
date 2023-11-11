@@ -107,6 +107,13 @@ impl GlProgram {
         }
     }
 
+    pub fn uniform_4_f32_slice(&self, name: &str, slice: &[f32]) {
+        unsafe {
+            let location = self.gl.get_uniform_location(self.handle, name).unwrap();
+            self.gl.uniform_4_f32_slice(Some(&location), slice);
+        }
+    }
+
     pub fn uniform_color(&self, name: &str, color: &Color) {
         self.uniform_3_f32(name, color.r, color.g, color.b);
     }

@@ -1,6 +1,7 @@
 use super::Float;
 use nalgebra as na;
 
+#[derive(Debug)]
 pub struct State<const DIM_OUT: usize> {
     pub t: f64,
     pub y: na::SVector<f64, DIM_OUT>,
