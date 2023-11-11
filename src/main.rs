@@ -7,6 +7,7 @@ use phyesthon::{
     },
     window::Window,
 };
+use std::time::Instant;
 
 fn main() {
     let mut mouse = MouseState::new();
@@ -28,6 +29,7 @@ fn main() {
     let mut current_presenter = 0;
 
     let mut pause = true;
+    let mut last_draw = None;
 
     event_loop.run_return(move |event, _, control_flow| match event {
         winit::event::Event::RedrawRequested(_) => {
@@ -39,6 +41,7 @@ fn main() {
                 &window,
                 &mut pause,
                 &mut mouse,
+                &mut last_draw,
             );
         }
         winit::event::Event::WindowEvent { event, .. } => {
@@ -81,10 +84,18 @@ fn render(
     window: &Window,
     paused: &mut bool,
     mouse: &mut MouseState,
+    last_draw: &mut Option<Instant>,
 ) {
+    let now = Instant::now();
+    let delta = last_draw.map(|last| now - last);
+
     if !*paused {
-        presenters[*current_presenter].update();
+        if let Some(delta) = delta {
+            presenters[*current_presenter].update(delta);
+        }
     }
+
+    *last_draw = Some(now);
 
     presenters[*current_presenter].update_mouse(*mouse);
     mouse.update();

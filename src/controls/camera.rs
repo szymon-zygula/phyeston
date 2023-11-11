@@ -122,7 +122,7 @@ impl Camera {
     pub fn projection_transform(&self, aspect: f32) -> na::Matrix4<f32> {
         na::Perspective3::new(
             aspect,
-            std::f32::consts::FRAC_2_PI,
+            std::f32::consts::FRAC_PI_2,
             self.near_plane,
             self.far_plane,
         )

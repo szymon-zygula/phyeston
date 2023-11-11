@@ -32,8 +32,8 @@ pub struct SpinningTop {
 
     state: ode::State<7>,
     solver: RungeKuttaIV<7, SpinningTopODE>,
-
-    density: f64,
+    simulation_speed: f64,
+    exact_t: f64,
 
     show_trajectory: bool,
     show_plane: bool,
@@ -60,13 +60,11 @@ impl SpinningTop {
     const DEFAULT_MAX_TRAJECTORY_POINTS: usize = 1000;
     const MAX_TRAJECTORY_POINTS_LIMIT: usize = 1024 * 1024;
 
-    pub fn new(gl: Arc<glow::Context>) -> Self {
+    pub fn new(gl: Arc<glow::Context>, rotation: na::UnitQuaternion<f64>) -> Self {
         let mut state = ode::State::<7> {
             t: 0.0,
             y: na::SVector::<f64, 7>::zeros(),
         };
-
-        let rotation = na::UnitQuaternion::from_euler_angles(0.0, 0.0, 0.0);
 
         state.y[3] = rotation.w;
         state.y[4] = rotation.i;
@@ -99,12 +97,13 @@ impl SpinningTop {
 
             camera: Camera::new(),
 
+            exact_t: 0.0,
             state,
-            density: Self::DEFAULT_DENSITY,
             solver: RungeKuttaIV::new(
                 0.01,
                 SpinningTopODE::new(Self::DEFAULT_DENSITY, Self::DEFAULT_SIDE_LENGTH),
             ),
+            simulation_speed: 1.0,
 
             show_box: true,
             show_plane: true,
@@ -252,6 +251,29 @@ impl SpinningTop {
 
         unsafe { self.gl.enable(glow::DEPTH_TEST) };
     }
+
+    fn step_update(&mut self) {
+        let mut new_state = self.solver.step(&self.state);
+        let new_rotation = na::UnitQuaternion::new_normalize(na::Quaternion::new(
+            new_state.y[3],
+            new_state.y[4],
+            new_state.y[5],
+            new_state.y[6],
+        ));
+
+        new_state.y[3] = new_rotation.w;
+        new_state.y[4] = new_rotation.i;
+        new_state.y[5] = new_rotation.j;
+        new_state.y[6] = new_rotation.k;
+
+        self.state = new_state;
+
+        let new_tip = self
+            .box_transform()
+            .transform_point(&na::point![1.0, 1.0, 1.0]);
+
+        self.trajectory_strip.push_vertex(&new_tip);
+    }
 }
 
 impl Presenter for SpinningTop {
@@ -276,21 +298,41 @@ impl Presenter for SpinningTop {
                 .recapacitate(self.max_trajectory_points);
         }
 
+        let mut density = self.solver.ode().density();
         ui.label("Box density");
-        ui.add(DragValue::new(&mut self.density));
+        if ui
+            .add(DragValue::new(&mut density).clamp_range(0.0..=f32::MAX))
+            .changed()
+        {
+            self.solver.ode.set_density(density);
+        }
 
         let mut side_length = self.solver.ode().side_length();
         ui.label("Side length");
         if ui
             .add(
                 DragValue::new(&mut side_length)
-                    .clamp_range(0.001..=f64::MAX)
+                    .clamp_range(0.1..=f64::MAX)
                     .speed(0.01),
             )
             .changed()
         {
             self.set_side_length(side_length);
         }
+
+        ui.label("Simulation speed");
+        ui.add(
+            DragValue::new(&mut self.simulation_speed)
+                .clamp_range(0.0..=f64::MAX)
+                .speed(0.01),
+        );
+
+        ui.label("Integration step");
+        ui.add(
+            DragValue::new(&mut self.solver.delta)
+                .clamp_range(0.001..=f64::MAX)
+                .speed(0.001),
+        );
     }
 
     fn show_bottom_ui(&mut self, ui: &mut Ui) {
@@ -302,27 +344,13 @@ impl Presenter for SpinningTop {
         self.draw_strips(aspect_ratio);
     }
 
-    fn update(&mut self) {
-        let mut new_state = self.solver.step(&self.state);
-        let new_rotation = na::UnitQuaternion::new_normalize(na::Quaternion::new(
-            new_state.y[3],
-            new_state.y[4],
-            new_state.y[5],
-            new_state.y[6],
-        ));
+    fn update(&mut self, delta: std::time::Duration) {
+        let elapsed_t = delta.as_secs_f64() * self.simulation_speed;
+        self.exact_t += elapsed_t;
 
-        new_state.y[3] = new_rotation.w;
-        new_state.y[4] = new_rotation.i;
-        new_state.y[5] = new_rotation.j;
-        new_state.y[6] = new_rotation.k;
-
-        self.state = new_state;
-
-        let new_tip = self
-            .box_transform()
-            .transform_point(&na::point![1.0, 1.0, 1.0]);
-
-        self.trajectory_strip.push_vertex(&new_tip);
+        while self.exact_t > self.state.t {
+            self.step_update();
+        }
     }
 
     fn update_mouse(&mut self, state: MouseState) {
@@ -335,7 +363,9 @@ impl Presenter for SpinningTop {
 }
 
 #[derive(Default)]
-pub struct SpinningTopBuilder {}
+pub struct SpinningTopBuilder {
+    tilt: f64,
+}
 
 impl SpinningTopBuilder {
     pub fn new() -> Self {
@@ -344,9 +374,22 @@ impl SpinningTopBuilder {
 }
 
 impl PresenterBuilder for SpinningTopBuilder {
-    fn build_ui(&mut self, _ui: &mut Ui) {}
+    fn build_ui(&mut self, ui: &mut Ui) {
+        ui.label("Tilt");
+        ui.add(
+            DragValue::new(&mut self.tilt)
+                .clamp_range(0.0..=180.0)
+                .speed(0.1)
+                .suffix("°"),
+        );
+    }
 
     fn build(&self, gl: Arc<glow::Context>) -> Box<dyn Presenter> {
-        Box::new(SpinningTop::new(gl))
+        let rotation = na::UnitQuaternion::from_axis_angle(
+            &na::UnitVector3::new_normalize(na::vector![-1.0, 0.0, 1.0]),
+            std::f64::consts::FRAC_PI_2 - f64::atan2(1.0, f64::sqrt(2.0)) + self.tilt.to_radians(),
+        );
+
+        Box::new(SpinningTop::new(gl, rotation))
     }
 }

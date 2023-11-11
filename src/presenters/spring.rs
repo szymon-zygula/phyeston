@@ -407,7 +407,7 @@ impl Presenter for Spring {
         self.rect_mesh.draw();
     }
 
-    fn update(&mut self) {
+    fn update(&mut self, _delta: std::time::Duration) {
         self.pending_steps += self.simulation_speed / self.euler.delta;
 
         let steps_to_do = self.pending_steps.trunc() as usize;
