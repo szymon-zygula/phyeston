@@ -13,7 +13,8 @@ uniform mat4 view_transform;
 uniform mat4 projection_transform;
 
 void main() {
-    gl_Position = projection_transform * view_transform * model_transform * vec4(position, 1.0f);
-    point.position = position;
-    point.normal = normal;
+    vec4 world = model_transform * vec4(position, 1.0f);
+    gl_Position = projection_transform * view_transform * world;
+    point.position = world.xyz;
+    point.normal = normalize((inverse(model_transform) * vec4(normal, 0.0)).xyz);
 }

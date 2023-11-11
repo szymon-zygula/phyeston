@@ -11,7 +11,7 @@ use crate::{
     render::{
         gl_drawable::GlDrawable,
         gl_program::GlProgram,
-        mesh::{GlMesh, Mesh, Triangle},
+        mesh::{GlTriangleMesh, Mesh, Triangle},
     },
     simulators::spring::{self, SpringODE, SpringState},
 };
@@ -32,7 +32,7 @@ macro_rules! state_graph {
 
 pub struct Spring {
     gl_program: GlProgram,
-    rect_mesh: GlMesh,
+    rect_mesh: GlTriangleMesh,
 
     simulation_speed: spring::F,
     pending_steps: spring::F,
@@ -101,7 +101,7 @@ impl Spring {
         functions
     }
 
-    fn create_rect_mesh(gl: Arc<glow::Context>) -> GlMesh {
+    fn create_rect_mesh(gl: Arc<glow::Context>) -> GlTriangleMesh {
         // 0 1
         // 3 2
         let mesh = Mesh::new(
@@ -113,7 +113,7 @@ impl Spring {
             ],
             vec![Triangle([2, 1, 0]), Triangle([3, 2, 0])],
         );
-        GlMesh::new(gl, &mesh)
+        GlTriangleMesh::new(gl, &mesh)
     }
 
     fn position_graph(&self, ui: &mut Ui) {

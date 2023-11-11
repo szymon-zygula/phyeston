@@ -5,7 +5,7 @@ use crate::{
     render::{
         gl_drawable::GlDrawable,
         gl_program::GlProgram,
-        mesh::{GlMesh, Mesh, Triangle},
+        mesh::{GlLineStrip, GlTriangleMesh, Mesh, Triangle},
         models,
     },
     simulators::spinning_top::SpinningTopODE,
@@ -16,12 +16,12 @@ use std::{f64::consts::PI, sync::Arc};
 
 pub struct SpinningTop {
     meshes_program: GlProgram,
-    box_mesh: GlMesh,
-    plane_mesh: GlMesh,
+    box_mesh: GlTriangleMesh,
+    plane_mesh: GlTriangleMesh,
 
-    lines_program: GlProgram,
-    gravity_mesh: GlMesh,
-    path_mesh: GlMesh,
+    strips_program: GlProgram,
+    gravity_strip: GlLineStrip,
+    path_strip: GlLineStrip,
 
     camera: Camera,
 
@@ -41,7 +41,7 @@ pub struct SpinningTop {
 }
 
 impl SpinningTop {
-    const LIGHT_POSITION: na::Vector3<f32> = na::vector![3.0, 1.0, 1.0];
+    const LIGHT_POSITION: na::Vector3<f32> = na::vector![-2.0, 4.0, -2.0];
     const LIGHT_COLOR: na::Vector3<f32> = na::vector![2.0, 2.0, 2.0];
     const LIGHT_AMBIENT: na::Vector3<f32> = na::vector![0.4, 0.4, 0.4];
 
@@ -58,7 +58,7 @@ impl SpinningTop {
         state.y[3] = rotation.w;
         state.y[4] = rotation.i;
         state.y[5] = rotation.j;
-        state.y[6] = rotation.w;
+        state.y[6] = rotation.k;
 
         Self {
             meshes_program: GlProgram::vertex_fragment(
@@ -66,16 +66,19 @@ impl SpinningTop {
                 "perspective_vert",
                 "phong_frag",
             ),
-            box_mesh: GlMesh::new(Arc::clone(&gl), &models::cube()),
-            plane_mesh: GlMesh::new(Arc::clone(&gl), &models::double_plane()),
+            box_mesh: GlTriangleMesh::new(Arc::clone(&gl), &models::cube()),
+            plane_mesh: GlTriangleMesh::new(Arc::clone(&gl), &models::double_plane()),
 
-            lines_program: GlProgram::vertex_fragment(
+            strips_program: GlProgram::vertex_fragment(
                 Arc::clone(&gl),
                 "perspective_vert",
                 "color_frag",
             ),
-            gravity_mesh: GlMesh::new(Arc::clone(&gl), &Mesh::<na::Point3<f32>>::empty()),
-            path_mesh: GlMesh::new(Arc::clone(&gl), &Mesh::<na::Point3<f32>>::empty()),
+            gravity_strip: GlLineStrip::new(
+                Arc::clone(&gl),
+                &vec![na::point![0.0, 0.0, 0.0], na::point![0.0, -1.0, 0.0]],
+            ),
+            path_strip: GlLineStrip::new(Arc::clone(&gl), &Vec::new()),
 
             camera: Camera::new(),
 
@@ -106,7 +109,7 @@ impl SpinningTop {
         rotation.to_homogeneous() * translation.to_homogeneous()
     }
 
-    pub fn draw_meshes(&self, aspect_ratio: f32) {
+    fn draw_meshes(&self, aspect_ratio: f32) {
         self.meshes_program.enable();
         self.meshes_program
             .uniform_matrix_4_f32_slice("view_transform", self.camera.view_transform().as_slice());
@@ -133,7 +136,7 @@ impl SpinningTop {
         }
     }
 
-    pub fn draw_box(&self) {
+    fn draw_box(&self) {
         self.meshes_program
             .uniform_4_f32("material_color", 0.2, 0.4, 0.8, 1.0);
         self.meshes_program.uniform_f32("material_diffuse", 0.8);
@@ -147,7 +150,7 @@ impl SpinningTop {
         self.box_mesh.draw();
     }
 
-    pub fn draw_plane(&self) {
+    fn draw_plane(&self) {
         self.meshes_program
             .uniform_4_f32("material_color", 0.8, 0.4, 0.2, 1.0);
         self.meshes_program.uniform_f32("material_diffuse", 0.8);
@@ -159,6 +162,28 @@ impl SpinningTop {
             .uniform_matrix_4_f32_slice("model_transform", na::Matrix4::identity().as_slice());
 
         self.plane_mesh.draw();
+    }
+
+    fn draw_strips(&self, aspect_ratio: f32) {
+        self.strips_program.enable();
+        self.strips_program
+            .uniform_matrix_4_f32_slice("view_transform", self.camera.view_transform().as_slice());
+        self.strips_program.uniform_matrix_4_f32_slice(
+            "projection_transform",
+            self.camera.projection_transform(aspect_ratio).as_slice(),
+        );
+        self.strips_program
+            .uniform_matrix_4_f32_slice("model_transform", na::Matrix4::identity().as_slice());
+
+        if self.show_gravity_vector {
+            self.draw_gravity_vector();
+        }
+    }
+
+    fn draw_gravity_vector(&self) {
+        self.strips_program
+            .uniform_4_f32("color", 1.0, 1.0, 1.0, 1.0);
+        self.gravity_strip.draw();
     }
 }
 
@@ -187,6 +212,7 @@ impl Presenter for SpinningTop {
 
     fn draw(&self, aspect_ratio: f32) {
         self.draw_meshes(aspect_ratio);
+        self.draw_strips(aspect_ratio);
     }
 
     fn update(&mut self) {}

@@ -157,6 +157,7 @@ impl Window {
     pub fn clear(&self) {
         unsafe {
             self.gl.enable(glow::DEPTH_TEST);
+            self.gl.enable(glow::CULL_FACE);
             self.gl
                 .clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
         }
