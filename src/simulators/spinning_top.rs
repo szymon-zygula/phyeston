@@ -42,11 +42,7 @@ impl SpinningTopODE {
     pub fn torque(&self, rotation: &na::UnitQuaternion<f64>) -> na::Vector3<f64> {
         let natural_center = 0.5 * self.side_length() * na::vector![1.0, 1.0, 1.0];
 
-        rotation.inverse().transform_vector(
-            &rotation
-                .transform_vector(&natural_center)
-                .cross(&self.weight()),
-        )
+        natural_center.cross(&rotation.inverse().transform_vector(&self.weight()))
     }
 
     pub fn weight(&self) -> na::Vector3<f64> {
