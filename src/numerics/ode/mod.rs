@@ -1,3 +1,8 @@
+pub mod euler;
+pub use euler::EulerODESolver;
+pub mod runge_kutta;
+pub use runge_kutta::RungeKuttaIV;
+
 use super::Float;
 use nalgebra as na;
 

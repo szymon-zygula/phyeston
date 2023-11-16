@@ -1,4 +1,4 @@
-use super::{ode::ODE, Float};
+use super::{ODE, Float};
 
 pub struct EulerODESolver<F: Float, const DIM_OUT: usize, O: ODE<F, DIM_OUT>> {
     pub delta: F,

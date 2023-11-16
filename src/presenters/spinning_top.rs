@@ -383,21 +383,19 @@ impl SpinningTopBuilder {
 }
 
 impl PresenterBuilder for SpinningTopBuilder {
-    fn build_ui(&mut self, ui: &mut Ui) {
+    fn build_ui(&mut self, ui: &mut Ui) -> egui::Response {
         ui.label("Tilt");
         ui.add(
             DragValue::new(&mut self.tilt)
                 .clamp_range(0.0..=180.0)
                 .speed(0.1)
                 .suffix("°"),
-        );
-
-        ui.label("Angular veloctiy");
-        ui.add(
-            DragValue::new(&mut self.angular_velocity)
-                .clamp_range(0.0..=f64::MAX)
-                .speed(0.01),
-        );
+        ) | ui.label("Angular veloctiy")
+            | ui.add(
+                DragValue::new(&mut self.angular_velocity)
+                    .clamp_range(0.0..=f64::MAX)
+                    .speed(0.01),
+            )
     }
 
     fn build(&self, gl: Arc<glow::Context>) -> Box<dyn Presenter> {

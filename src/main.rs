@@ -3,7 +3,8 @@ use egui_winit::winit::{self, platform::run_return::EventLoopExtRunReturn};
 use phyesthon::{
     controls::mouse::MouseState,
     presenters::{
-        spinning_top::SpinningTopBuilder, spring::SpringBuilder, Presenter, PresenterBuilder,
+        quaternions::QuaternionsBuilder, spinning_top::SpinningTopBuilder, spring::SpringBuilder,
+        Presenter, PresenterBuilder,
     },
     window::Window,
 };
@@ -19,6 +20,7 @@ fn main() {
     let mut builders: Vec<Box<dyn PresenterBuilder>> = vec![
         Box::new(SpinningTopBuilder::new()),
         Box::new(SpringBuilder::new()),
+        Box::new(QuaternionsBuilder::new()),
     ];
 
     let mut presenters: Vec<Box<dyn Presenter>> = builders
@@ -27,6 +29,7 @@ fn main() {
         .collect();
 
     let mut current_presenter = 0;
+    let mut auto_reset = false;
 
     let mut pause = true;
     let mut last_draw = None;
@@ -42,6 +45,7 @@ fn main() {
                 &mut pause,
                 &mut mouse,
                 &mut last_draw,
+                &mut auto_reset,
             );
         }
         winit::event::Event::WindowEvent { event, .. } => {
@@ -85,6 +89,7 @@ fn render(
     paused: &mut bool,
     mouse: &mut MouseState,
     last_draw: &mut Option<Instant>,
+    auto_reset: &mut bool,
 ) {
     let now = Instant::now();
     let delta = last_draw.map(|last| now - last);
@@ -108,6 +113,7 @@ fn render(
             window,
             paused,
             egui_ctx,
+            auto_reset,
         );
     });
 
@@ -145,6 +151,7 @@ fn draw_ui(
     window: &Window,
     paused: &mut bool,
     egui_ctx: &egui::Context,
+    auto_reset: &mut bool,
 ) {
     egui::SidePanel::left("Side panel")
         .min_width(100.0)
@@ -173,8 +180,9 @@ fn draw_ui(
 
                 ui.separator();
 
-                builders[*current_presenter].build_ui(ui);
-                if ui.button("Reset").clicked() {
+                let changed = builders[*current_presenter].build_ui(ui).changed();
+                ui.checkbox(auto_reset, "Autoreset");
+                if ui.button("Reset").clicked() || changed && *auto_reset {
                     presenters[*current_presenter] =
                         builders[*current_presenter].build(window.clone_gl());
                 }

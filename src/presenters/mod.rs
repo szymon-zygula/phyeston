@@ -2,6 +2,7 @@ use crate::controls::mouse::MouseState;
 use std::time::Duration;
 
 pub mod parametrizable_function;
+pub mod quaternions;
 pub mod spinning_top;
 pub mod spring;
 
@@ -15,6 +16,6 @@ pub trait Presenter {
 }
 
 pub trait PresenterBuilder {
-    fn build_ui(&mut self, ui: &mut egui::Ui);
+    fn build_ui(&mut self, ui: &mut egui::Ui) -> egui::Response;
     fn build(&self, gl: std::sync::Arc<glow::Context>) -> Box<dyn Presenter>;
 }

@@ -439,9 +439,9 @@ impl SpringBuilder {
 }
 
 impl PresenterBuilder for SpringBuilder {
-    fn build_ui(&mut self, ui: &mut Ui) {
-        ui.add(Slider::new(&mut self.position, -5.0..=5.0).text("Position"));
-        ui.add(Slider::new(&mut self.velocity, -10.0..=10.0).text("Velocity"));
+    fn build_ui(&mut self, ui: &mut Ui) -> egui::Response {
+        ui.add(Slider::new(&mut self.position, -5.0..=5.0).text("Position"))
+            | ui.add(Slider::new(&mut self.velocity, -10.0..=10.0).text("Velocity"))
     }
 
     fn build(&self, gl: Arc<glow::Context>) -> Box<dyn Presenter> {
