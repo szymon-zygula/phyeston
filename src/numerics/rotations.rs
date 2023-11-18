@@ -5,25 +5,40 @@ use std::f64::consts::FRAC_PI_2;
 pub struct Quaternion(pub na::Vector4<f64>);
 
 impl Quaternion {
-    pub fn as_euler(&self) -> EulerAngles {
+    pub fn to_euler(&self) -> EulerAngles {
         let w = self.0[0];
         let x = self.0[1];
         let y = self.0[2];
         let z = self.0[3];
-        EulerAngles(na::vector![
-            f64::atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y)),
-            -FRAC_PI_2
-                + 2.0
-                    * f64::atan2(
-                        (1.0 + 2.0 * (w * y - x * z)).sqrt(),
-                        (1.0 - 2.0 * (w * y - x * z)).sqrt()
-                    ),
-            f64::atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
-        ])
+
+        let test = w * y - x * z;
+
+        let mut x_angle =
+            f64::atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)).to_degrees();
+        let y_angle = (-FRAC_PI_2
+            + 2.0
+                * f64::atan2(
+                    (1.0 + 2.0 * (w * y - x * z)).sqrt(),
+                    (1.0 - 2.0 * (w * y - x * z)).sqrt(),
+                ))
+        .to_degrees();
+        let mut z_angle =
+            f64::atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y)).to_degrees();
+
+        // Gimbal lock handling
+        // if test == 0.5 {
+        //     x_angle = 2.0 * f64::atan2(w, z);
+        //     z_angle = 0.0;
+        // } else if test == -0.5 {
+        //     x_angle = -2.0 * f64::atan2(w, z);
+        //     z_angle = 0.0;
+        // }
+
+        EulerAngles(na::vector![x_angle, y_angle, z_angle,].map(|c| c.rem_euclid(360.0)))
     }
 
     pub fn lerp(&self, other: &Quaternion, t: f64) -> Quaternion {
-        Quaternion(self.0 * (1.0 - t) + other.0 * t)
+        Quaternion(self.0 * (1.0 - t) + other.0 * t).normalize()
     }
 
     pub fn slerp(&self, other: &Quaternion, t: f64) -> Quaternion {
@@ -32,10 +47,28 @@ impl Quaternion {
             ((1.0 - t) * omega).sin() / omega.sin() * self.0
                 + (t * omega).sin() / omega.sin() * other.0,
         )
+        .normalize()
     }
 
-    pub fn as_homogeneous(&self) -> na::Matrix4<f64> {
-        self.as_euler().as_homogenous()
+    pub fn conjugate(&self) -> Self {
+        Self(na::vector![self.0[0], -self.0[1], -self.0[2], -self.0[3]])
+    }
+
+    pub fn to_homogeneous(&self) -> na::Matrix4<f64> {
+        let x = (*self * Quaternion(na::vector![0.0, 1.0, 0.0, 0.0]) * self.conjugate()).0;
+        let y = (*self * Quaternion(na::vector![0.0, 0.0, 1.0, 0.0]) * self.conjugate()).0;
+        let z = (*self * Quaternion(na::vector![0.0, 0.0, 0.0, 1.0]) * self.conjugate()).0;
+
+        na::matrix![
+            x[1], y[1], z[1], 0.0;
+            x[2], y[2], z[2], 0.0;
+            x[3], y[3], z[3], 0.0;
+            0.0, 0.0, 0.0, 1.0;
+        ]
+    }
+
+    pub fn normalize(&self) -> Self {
+        Quaternion(self.0.normalize())
     }
 }
 
@@ -66,10 +99,10 @@ impl std::ops::Mul for Quaternion {
 pub struct EulerAngles(pub na::Vector3<f64>);
 
 impl EulerAngles {
-    pub fn as_quaternion(&self) -> Quaternion {
-        let psi_2 = self.0[0] * 0.5;
-        let theta_2 = self.0[1] * 0.5;
-        let phi_2 = self.0[2] * 0.5;
+    pub fn to_quaternion(&self) -> Quaternion {
+        let psi_2 = self.0[0].to_radians() * 0.5;
+        let theta_2 = self.0[1].to_radians() * 0.5;
+        let phi_2 = self.0[2].to_radians() * 0.5;
 
         Quaternion(na::vector![psi_2.cos(), 0.0, 0.0, psi_2.sin()])
             * Quaternion(na::vector![theta_2.cos(), 0.0, theta_2.sin(), 0.0])
@@ -80,8 +113,14 @@ impl EulerAngles {
         EulerAngles(self.0 * (1.0 - t) + other.0 * t)
     }
 
-    pub fn as_homogenous(&self) -> na::Matrix4<f64> {
-        rotate_x(self.0[2]) * rotate_y(self.0[1]) * rotate_z(self.0[0])
+    pub fn to_homogeneous(&self) -> na::Matrix4<f64> {
+        rotate_z(self.0[0].to_radians())
+            * rotate_y(self.0[1].to_radians())
+            * rotate_x(self.0[2].to_radians())
+    }
+
+    pub fn normalize(&self) -> EulerAngles {
+        EulerAngles(self.0.map(|c| c.rem_euclid(360.0)))
     }
 }
 
@@ -92,17 +131,24 @@ pub enum Rotation {
 }
 
 impl Rotation {
-    pub fn as_quaternion(&self) -> Quaternion {
+    pub fn to_quaternion(&self) -> Quaternion {
         match self {
             Rotation::Quaternion(q) => *q,
-            Rotation::EulerAngles(e) => e.as_quaternion(),
+            Rotation::EulerAngles(e) => e.to_quaternion(),
         }
     }
 
-    pub fn as_euler_angles(&self) -> EulerAngles {
+    pub fn to_euler_angles(&self) -> EulerAngles {
         match self {
-            Rotation::Quaternion(q) => q.as_euler(),
+            Rotation::Quaternion(q) => q.to_euler(),
             Rotation::EulerAngles(e) => *e,
+        }
+    }
+
+    pub fn normalize(&self) -> Self {
+        match self {
+            Rotation::Quaternion(quaternion) => Self::Quaternion(quaternion.normalize()),
+            Rotation::EulerAngles(euler) => Self::EulerAngles(euler.normalize()),
         }
     }
 }

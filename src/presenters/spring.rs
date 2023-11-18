@@ -359,7 +359,10 @@ impl Presenter for Spring {
         });
     }
 
-    fn draw(&self, aspect_ratio: f32) {
+    fn draw(&self, size: Option<egui_winit::winit::dpi::PhysicalSize<u32>>) {
+        let Some(size) = size else { return };
+        let aspect_ratio = size.width as f32 / size.height as f32;
+
         let Some(state) = self.states.last() else {
             return;
         };

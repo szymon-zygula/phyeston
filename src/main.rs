@@ -18,9 +18,9 @@ fn main() {
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, window.clone_gl(), None);
 
     let mut builders: Vec<Box<dyn PresenterBuilder>> = vec![
+        Box::new(QuaternionsBuilder::new()),
         Box::new(SpinningTopBuilder::new()),
         Box::new(SpringBuilder::new()),
-        Box::new(QuaternionsBuilder::new()),
     ];
 
     let mut presenters: Vec<Box<dyn Presenter>> = builders
@@ -29,7 +29,7 @@ fn main() {
         .collect();
 
     let mut current_presenter = 0;
-    let mut auto_reset = false;
+    let mut auto_reset = true;
 
     let mut pause = true;
     let mut last_draw = None;
@@ -129,12 +129,7 @@ fn render(
 
     window.clear();
 
-    let aspect_ratio = window
-        .size()
-        .map(|p| p.width as f32 / p.height as f32)
-        .unwrap_or(1.0);
-
-    presenters[*current_presenter].draw(aspect_ratio);
+    presenters[*current_presenter].draw(window.size());
 
     egui_glow.paint(window.window());
 
