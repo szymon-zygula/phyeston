@@ -16,5 +16,5 @@ void main() {
     vec4 world = model_transform * vec4(position, 1.0f);
     gl_Position = projection_transform * view_transform * world;
     point.position = world.xyz;
-    point.normal = normalize((inverse(model_transform) * vec4(normal, 0.0)).xyz);
+    point.normal = normalize((model_transform * vec4(normal, 0.0)).xyz);
 }
