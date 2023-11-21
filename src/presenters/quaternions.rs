@@ -3,8 +3,8 @@ use crate::{
     controls::{camera::Camera, mouse::MouseState},
     numerics::rotations::*,
     render::{
-        drawbuffer::Drawbuffer, gl_drawable::GlDrawable, gl_program::GlProgram,
-        mesh::GlTriangleMesh, models,
+        drawbuffer::Drawbuffer, gl_drawable::GlDrawable, gl_mesh::GlTriangleMesh,
+        gl_program::GlProgram, models,
     },
     ui::widgets,
 };
