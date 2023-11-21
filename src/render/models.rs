@@ -62,6 +62,20 @@ pub fn cube() -> Mesh<ClassicVertex> {
     }
 }
 
+pub fn inverse_cube() -> Mesh<ClassicVertex> {
+    let mut cube = cube();
+
+    for vertex in &mut cube.vertices {
+        vertex.normal = -vertex.normal;
+    }
+
+    for Triangle([a, b, _]) in &mut cube.triangles {
+        std::mem::swap(a, b);
+    }
+
+    cube
+}
+
 pub fn double_plane() -> Mesh<ClassicVertex> {
     let up = na::vector![0.0, 1.0, 0.0];
     let down = na::vector![0.0, -1.0, 0.0];
