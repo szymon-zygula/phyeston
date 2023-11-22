@@ -7,8 +7,8 @@ use crate::{
     },
     render::{
         gl_drawable::GlDrawable,
+        gl_mesh::{GlLineStrip, GlTriangleMesh},
         gl_program::GlProgram,
-        mesh::{GlLineStrip, GlTriangleMesh},
         models,
     },
     simulators::spinning_top::SpinningTopODE,

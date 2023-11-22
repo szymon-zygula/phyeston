@@ -21,7 +21,6 @@ fn main() {
         Box::new(QuaternionsBuilder::new()),
         Box::new(SpinningTopBuilder::new()),
         Box::new(SpringBuilder::new()),
-        Box::new(JellyBuilder::new()),
     ];
 
     let mut presenters: Vec<Box<dyn Presenter>> = builders

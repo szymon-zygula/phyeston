@@ -11,10 +11,8 @@ impl Quaternion {
         let y = self.0[2];
         let z = self.0[3];
 
-        let test = w * y - x * z;
-
         let mut x_angle =
-            f64::atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)).to_degrees();
+            f64::atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y)).to_degrees();
         let y_angle = (-FRAC_PI_2
             + 2.0
                 * f64::atan2(
@@ -23,7 +21,9 @@ impl Quaternion {
                 ))
         .to_degrees();
         let mut z_angle =
-            f64::atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y)).to_degrees();
+            f64::atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)).to_degrees();
+
+        // let test = w * x - y * z;
 
         // Gimbal lock handling
         // if test == 0.5 {
@@ -33,21 +33,44 @@ impl Quaternion {
         //     x_angle = -2.0 * f64::atan2(w, z);
         //     z_angle = 0.0;
         // }
+        //
 
-        EulerAngles(na::vector![x_angle, y_angle, z_angle,].map(|c| c.rem_euclid(360.0)))
+        EulerAngles(na::vector![x_angle, y_angle, z_angle]).normalize()
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.0.iter().all(|&c| c == 0.0)
     }
 
     pub fn lerp(&self, other: &Quaternion, t: f64) -> Quaternion {
-        Quaternion(self.0 * (1.0 - t) + other.0 * t).normalize()
+        if other.is_zero() && self.is_zero() {
+            return Quaternion(na::vector![1.0, 0.0, 0.0, 0.0]);
+        }
+
+        let new = Quaternion(self.0 * (1.0 - t) + other.0 * t);
+        if new.is_zero() {
+            let new_t = t + if t == 1.0 { -1.0 } else { 1.0 } * 10.0 * f64::EPSILON;
+
+            self.lerp(other, new_t)
+        } else {
+            new.normalize()
+        }
     }
 
     pub fn slerp(&self, other: &Quaternion, t: f64) -> Quaternion {
-        let omega = self.0.dot(&other.0).acos();
-        Quaternion(
-            ((1.0 - t) * omega).sin() / omega.sin() * self.0
-                + (t * omega).sin() / omega.sin() * other.0,
-        )
-        .normalize()
+        let dot = self.0.dot(&other.0).clamp(-1.0, 1.0);
+        let other = if dot < 0.0 { -*other } else { *other };
+
+        let omega = dot.acos();
+
+        if omega.sin().abs() <= 10.0 * f64::EPSILON {
+            self.lerp(&other, t)
+        } else {
+            Quaternion(
+                (((1.0 - t) * omega).sin() * self.0 + (t * omega).sin() * other.0) / omega.sin(),
+            )
+            .normalize()
+        }
     }
 
     pub fn conjugate(&self) -> Self {
@@ -73,7 +96,7 @@ impl Quaternion {
 }
 
 impl std::ops::Mul for Quaternion {
-    type Output = Quaternion;
+    type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
         let w1 = self.0[0];
@@ -95,14 +118,22 @@ impl std::ops::Mul for Quaternion {
     }
 }
 
+impl std::ops::Neg for Quaternion {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Quaternion(-self.0)
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct EulerAngles(pub na::Vector3<f64>);
 
 impl EulerAngles {
     pub fn to_quaternion(&self) -> Quaternion {
-        let psi_2 = self.0[0].to_radians() * 0.5;
+        let psi_2 = self.0[2].to_radians() * 0.5;
         let theta_2 = self.0[1].to_radians() * 0.5;
-        let phi_2 = self.0[2].to_radians() * 0.5;
+        let phi_2 = self.0[0].to_radians() * 0.5;
 
         Quaternion(na::vector![psi_2.cos(), 0.0, 0.0, psi_2.sin()])
             * Quaternion(na::vector![theta_2.cos(), 0.0, theta_2.sin(), 0.0])
@@ -110,13 +141,39 @@ impl EulerAngles {
     }
 
     pub fn lerp(&self, other: &EulerAngles, t: f64) -> EulerAngles {
-        EulerAngles(self.0 * (1.0 - t) + other.0 * t)
+        let mut me = *self;
+        let mut other = *other;
+        if (other.0.x - me.0.x).abs() > 180.0 {
+            if other.0.x > me.0.x {
+                other.0.x -= 360.0;
+            } else {
+                me.0.x -= 360.0;
+            }
+        }
+
+        if (other.0.y - me.0.y).abs() > 180.0 {
+            if other.0.y > me.0.y {
+                other.0.y -= 360.0;
+            } else {
+                me.0.y -= 360.0;
+            }
+        }
+
+        if (other.0.z - me.0.z).abs() > 180.0 {
+            if other.0.z > me.0.z {
+                other.0.z -= 360.0;
+            } else {
+                me.0.z -= 360.0;
+            }
+        }
+
+        EulerAngles(me.0 * (1.0 - t) + other.0 * t)
     }
 
     pub fn to_homogeneous(&self) -> na::Matrix4<f64> {
-        rotate_z(self.0[0].to_radians())
+        rotate_z(self.0[2].to_radians())
             * rotate_y(self.0[1].to_radians())
-            * rotate_x(self.0[2].to_radians())
+            * rotate_x(self.0[0].to_radians())
     }
 
     pub fn normalize(&self) -> EulerAngles {

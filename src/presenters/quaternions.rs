@@ -3,8 +3,8 @@ use crate::{
     controls::{camera::Camera, mouse::MouseState},
     numerics::rotations::*,
     render::{
-        drawbuffer::Drawbuffer, gl_drawable::GlDrawable, gl_program::GlProgram,
-        mesh::GlTriangleMesh, models,
+        drawbuffer::Drawbuffer, gl_drawable::GlDrawable, gl_mesh::GlTriangleMesh,
+        gl_program::GlProgram, models,
     },
     ui::widgets,
 };
@@ -57,27 +57,27 @@ impl Quaternions {
         slerp: bool,
         keyframes: usize,
     ) -> Self {
+        let start_rotation_euler = start_rotation.normalize().to_euler_angles().normalize();
+        let start_rotation_quaternion = start_rotation.normalize().to_quaternion().normalize();
+        let end_rotation_euler = end_rotation.normalize().to_euler_angles().normalize();
+        let end_rotation_quaternion = end_rotation.normalize().to_quaternion().normalize();
+
         let keyframes_euler = Self::euler_keyframes(
-            &start_rotation,
+            &start_rotation_euler,
             &start_position,
-            &end_rotation,
+            &end_rotation_euler,
             &end_position,
             keyframes,
         );
 
         let keyframes_quaternion = Self::quaternion_keyframes(
-            &start_rotation,
+            &start_rotation_quaternion,
             &start_position,
-            &end_rotation,
+            &end_rotation_quaternion,
             &end_position,
             keyframes,
             slerp,
         );
-
-        let start_rotation_euler = start_rotation.to_euler_angles();
-        let start_rotation_quaternion = start_rotation.to_quaternion();
-        let end_rotation_euler = end_rotation.to_euler_angles();
-        let end_rotation_quaternion = end_rotation.to_quaternion();
 
         Self {
             camera: Camera::new(),
@@ -131,30 +131,27 @@ impl Quaternions {
     }
 
     fn euler_keyframe(
-        start_rotation: &EulerAngles,
+        start_euler: &EulerAngles,
         start_position: &na::Vector3<f64>,
-        end_rotation: &EulerAngles,
+        end_euler: &EulerAngles,
         end_position: &na::Vector3<f64>,
         t: f64,
     ) -> na::Matrix4<f32> {
         na::Translation::from(na::Vector3::lerp(start_position, end_position, t))
             .to_homogeneous()
             .map(|r| r as f32)
-            * EulerAngles::lerp(&start_rotation, &end_rotation, t)
+            * EulerAngles::lerp(&start_euler, &end_euler, t)
                 .to_homogeneous()
                 .map(|r| r as f32)
     }
 
     fn euler_keyframes(
-        start_rotation: &Rotation,
+        start_euler: &EulerAngles,
         start_position: &na::Vector3<f64>,
-        end_rotation: &Rotation,
+        end_euler: &EulerAngles,
         end_position: &na::Vector3<f64>,
         keyframes: usize,
     ) -> Vec<na::Matrix4<f32>> {
-        let start_euler = start_rotation.to_euler_angles();
-        let end_euler = end_rotation.to_euler_angles();
-
         (0..=keyframes + 1)
             .map(|i| {
                 let t = (i as f64) / (keyframes as f64 + 1.0);
@@ -180,16 +177,13 @@ impl Quaternions {
     }
 
     fn quaternion_keyframes(
-        start_rotation: &Rotation,
+        start_quaternion: &Quaternion,
         start_position: &na::Vector3<f64>,
-        end_rotation: &Rotation,
+        end_quaternion: &Quaternion,
         end_position: &na::Vector3<f64>,
         keyframes: usize,
         slerp: bool,
     ) -> Vec<na::Matrix4<f32>> {
-        let start_quaternion = start_rotation.to_quaternion();
-        let end_quaternion = end_rotation.to_quaternion();
-
         let interpolation = if slerp {
             Quaternion::slerp
         } else {
@@ -201,9 +195,9 @@ impl Quaternions {
                 let t = (i as f64) / (keyframes as f64 + 1.0);
                 Self::quaternion_keyframe(
                     interpolation,
-                    &start_quaternion,
+                    start_quaternion,
                     start_position,
-                    &end_quaternion,
+                    end_quaternion,
                     end_position,
                     t,
                 )

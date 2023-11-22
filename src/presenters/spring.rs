@@ -10,8 +10,9 @@ use crate::{
     numerics::EulerODESolver,
     render::{
         gl_drawable::GlDrawable,
+        gl_mesh::GlTriangleMesh,
         gl_program::GlProgram,
-        mesh::{GlTriangleMesh, Mesh, Triangle},
+        mesh::{Mesh, Triangle},
     },
     simulators::spring::{self, SpringODE, SpringState},
 };
