@@ -11,8 +11,7 @@ impl Quaternion {
         let y = self.0[2];
         let z = self.0[3];
 
-        let mut x_angle =
-            f64::atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y)).to_degrees();
+        let x_angle = f64::atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y)).to_degrees();
         let y_angle = (-FRAC_PI_2
             + 2.0
                 * f64::atan2(
@@ -20,8 +19,7 @@ impl Quaternion {
                     (1.0 - 2.0 * (w * y - x * z)).sqrt(),
                 ))
         .to_degrees();
-        let mut z_angle =
-            f64::atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)).to_degrees();
+        let z_angle = f64::atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)).to_degrees();
 
         // let test = w * x - y * z;
 

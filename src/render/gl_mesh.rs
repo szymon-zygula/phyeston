@@ -225,3 +225,100 @@ impl Drop for GlLineStrip {
         }
     }
 }
+
+pub struct GlPointCloud {
+    vertex_buffer: glow::Buffer,
+    vertex_array: std::mem::MaybeUninit<glow::VertexArray>,
+    point_count: usize,
+    gl: Arc<glow::Context>,
+}
+
+impl GlPointCloud {
+    pub fn new(gl: Arc<glow::Context>, vertices: &[na::Point3<f32>]) -> Self {
+        let mut mesh = Self::new_uninit(Arc::clone(&gl), vertices.len());
+
+        mesh.vertex_array = std::mem::MaybeUninit::new(opengl::init_vao(&gl, || {
+            mesh.update_points(vertices);
+
+            unsafe {
+                mesh.gl.vertex_attrib_pointer_f32(
+                    0,
+                    3,
+                    glow::FLOAT,
+                    false,
+                    3 * std::mem::size_of::<f32>() as i32,
+                    0,
+                );
+                mesh.gl.enable_vertex_attrib_array(0);
+            }
+        }));
+
+        mesh
+    }
+
+    fn new_uninit(gl: Arc<glow::Context>, point_count: usize) -> GlPointCloud {
+        let vertex_buffer = unsafe { gl.create_buffer() }.unwrap();
+
+        Self {
+            point_count,
+            vertex_buffer,
+            vertex_array: std::mem::MaybeUninit::uninit(),
+            gl,
+        }
+    }
+
+    pub fn update_points(&mut self, points: &[na::Point3<f32>]) {
+        let raw_points = utils::slice_as_raw(points);
+
+        unsafe {
+            self.gl
+                .bind_buffer(glow::ARRAY_BUFFER, Some(self.vertex_buffer));
+            self.gl
+                .buffer_data_u8_slice(glow::ARRAY_BUFFER, raw_points, glow::STATIC_DRAW);
+        }
+    }
+}
+
+impl Drop for GlPointCloud {
+    fn drop(&mut self) {
+        unsafe {
+            self.gl.delete_vertex_array(self.vertex_array.assume_init());
+            self.gl.delete_buffer(self.vertex_buffer);
+        }
+    }
+}
+
+impl GlDrawable for GlPointCloud {
+    fn draw(&self) {
+        unsafe {
+            opengl::with_vao(&self.gl, self.vertex_array.assume_init(), || {
+                self.gl
+                    .draw_arrays(glow::POINTS, 0, self.point_count as i32);
+            });
+        }
+    }
+}
+
+pub struct GlLines(GlPointCloud);
+
+impl GlLines {
+    pub fn new(gl: Arc<glow::Context>, vertices: &[na::Point3<f32>]) -> Self {
+        GlLines(GlPointCloud::new(gl, vertices))
+    }
+
+    pub fn update_points(&mut self, points: &[na::Point3<f32>]) {
+        self.0.update_points(points)
+    }
+}
+
+impl GlDrawable for GlLines {
+    fn draw(&self) {
+        unsafe {
+            opengl::with_vao(&self.0.gl, self.0.vertex_array.assume_init(), || {
+                self.0
+                    .gl
+                    .draw_arrays(glow::LINES, 0, self.0.point_count as i32);
+            });
+        }
+    }
+}

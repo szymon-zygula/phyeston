@@ -1,4 +1,5 @@
 use super::mesh::{ClassicVertex, Mesh, Triangle};
+use itertools::Itertools;
 use nalgebra as na;
 
 pub fn cube() -> Mesh<ClassicVertex> {
@@ -74,6 +75,74 @@ pub fn inverse_cube() -> Mesh<ClassicVertex> {
     }
 
     cube
+}
+
+/// For GlLineStrip
+pub fn wire_cube() -> Vec<na::Point3<f32>> {
+    vec![
+        // Front
+        na::point![1.0, 1.0, 1.0,],
+        na::point![-1.0, 1.0, 1.0,],
+        na::point![-1.0, -1.0, 1.0,],
+        na::point![1.0, -1.0, 1.0,],
+        na::point![1.0, 1.0, 1.0,],
+        // Back
+        na::point![1.0, 1.0, -1.0,],
+        na::point![-1.0, 1.0, -1.0,],
+        na::point![-1.0, -1.0, -1.0,],
+        na::point![1.0, -1.0, -1.0,],
+        na::point![1.0, 1.0, -1.0,],
+        // Sides
+        na::point![-1.0, 1.0, -1.0,],
+        na::point![-1.0, 1.0, 1.0,],
+        na::point![-1.0, -1.0, 1.0,],
+        na::point![-1.0, -1.0, -1.0],
+        na::point![1.0, -1.0, -1.0,],
+        na::point![1.0, -1.0, 1.0,],
+    ]
+}
+
+/// For GlLines
+pub fn wire_grid() -> Vec<na::Point3<f32>> {
+    (0..3)
+        .cartesian_product(0..4)
+        .cartesian_product(0..4)
+        .flat_map(|((u, v), w)| {
+            let un = (u + 1) as f32 / 3.0;
+            let u = u as f32 / 3.0;
+            let v = v as f32 / 3.0;
+            let w = w as f32 / 3.0;
+
+            [na::point![u, v, w], na::point![un, v, w]]
+        })
+        .chain(
+            (0..4)
+                .cartesian_product(0..3)
+                .cartesian_product(0..4)
+                .flat_map(|((u, v), w)| {
+                    let vn = (v + 1) as f32 / 3.0;
+                    let u = u as f32 / 3.0;
+                    let v = v as f32 / 3.0;
+                    let w = w as f32 / 3.0;
+
+                    [na::point![u, v, w], na::point![u, vn, w]]
+                }),
+        )
+        .chain(
+            (0..4)
+                .cartesian_product(0..4)
+                .cartesian_product(0..3)
+                .flat_map(|((u, v), w)| {
+                    let wn = (w + 1) as f32 / 3.0;
+                    let u = u as f32 / 3.0;
+                    let v = v as f32 / 3.0;
+                    let w = w as f32 / 3.0;
+
+                    [na::point![u, v, w], na::point![u, v, wn]]
+                }),
+        )
+        .map(|p| 2.0 * p - na::vector![1.0, 1.0, 1.0])
+        .collect()
 }
 
 pub fn double_plane() -> Mesh<ClassicVertex> {

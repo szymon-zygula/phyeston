@@ -18,6 +18,7 @@ fn main() {
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, window.clone_gl(), None);
 
     let mut builders: Vec<Box<dyn PresenterBuilder>> = vec![
+        Box::new(JellyBuilder::new()),
         Box::new(QuaternionsBuilder::new()),
         Box::new(SpinningTopBuilder::new()),
         Box::new(SpringBuilder::new()),

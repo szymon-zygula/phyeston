@@ -140,7 +140,7 @@ impl Quaternions {
         na::Translation::from(na::Vector3::lerp(start_position, end_position, t))
             .to_homogeneous()
             .map(|r| r as f32)
-            * EulerAngles::lerp(&start_euler, &end_euler, t)
+            * EulerAngles::lerp(start_euler, end_euler, t)
                 .to_homogeneous()
                 .map(|r| r as f32)
     }
@@ -155,7 +155,7 @@ impl Quaternions {
         (0..=keyframes + 1)
             .map(|i| {
                 let t = (i as f64) / (keyframes as f64 + 1.0);
-                Self::euler_keyframe(&start_euler, start_position, &end_euler, end_position, t)
+                Self::euler_keyframe(start_euler, start_position, end_euler, end_position, t)
             })
             .collect()
     }
@@ -171,7 +171,7 @@ impl Quaternions {
         na::Translation::from(na::Vector3::lerp(start_position, end_position, t))
             .to_homogeneous()
             .map(|r| r as f32)
-            * interpolation(&start_rotation, &end_rotation, t)
+            * interpolation(start_rotation, end_rotation, t)
                 .to_homogeneous()
                 .map(|r| r as f32)
     }

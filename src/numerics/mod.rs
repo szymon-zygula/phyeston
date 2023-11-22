@@ -1,5 +1,6 @@
 use nalgebra as na;
 
+pub mod bezier;
 pub mod ode;
 pub mod rotations;
 pub use ode::EulerODESolver;
