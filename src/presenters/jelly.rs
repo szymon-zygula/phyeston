@@ -169,20 +169,21 @@ impl Model {
         Self {
             program: GlProgram::vertex_fragment(
                 Arc::clone(&gl),
-                "bezier_deformed_vertex",
+                "bezier_deformed_vert",
                 "phong_frag",
             ),
             mesh: GlTriangleMesh::new(
                 Arc::clone(&gl),
                 &Mesh::from_file(Path::new("models/duck.txt")),
             ),
-            transform: na::Matrix4::identity(),
+            transform: na::Translation3::new(0.0, -0.5, 0.0).to_homogeneous()
+                * na::Scale3::new(0.005, 0.005, 0.005).to_homogeneous(),
             show: true,
         }
     }
 
     fn ui(&mut self, ui: &mut Ui) {
-        ui.checkbox(&mut self.show, "Show duck");
+        ui.checkbox(&mut self.show, "Show model");
     }
 
     fn draw(&self, aspect_ratio: f32, camera: &Camera, cube: &[f32; 3 * 64]) {
@@ -199,7 +200,7 @@ impl Model {
         );
         self.program
             .uniform_matrix_4_f32_slice("model", self.transform.as_slice());
-        self.program.uniform_3_f32_slice("bc", cube);
+        self.program.uniform_3_f32_slice("bezier_cube", cube);
 
         self.program
             .uniform_3_f32_slice("eye_position", camera.position().coords.as_slice());
@@ -231,6 +232,7 @@ struct BezierCube {
     show_grid: bool,
 
     cube: bezier::Cube<f64>,
+    flat_cube: [f32; 3 * 64],
     gl: Arc<glow::Context>,
 }
 
@@ -254,6 +256,7 @@ impl BezierCube {
             grid_transform: na::Matrix4::identity(),
             show_grid: true,
 
+            flat_cube: cube.as_f32_flat(),
             cube,
             gl,
         }
@@ -307,12 +310,18 @@ impl BezierCube {
             self.draw_grid(aspect_ratio, camera);
         }
     }
+
+    fn update(&mut self, new_cube: bezier::Cube<f64>) {
+        self.flat_cube = new_cube.as_f32_flat();
+        self.cube = new_cube;
+    }
 }
 
 pub struct Jelly {
     camera: Camera,
 
     bezier_cube: BezierCube,
+    model: Model,
     room: Room,
     control_frame: ControlFrame,
 
@@ -325,6 +334,7 @@ impl Jelly {
             camera: Camera::new(),
 
             bezier_cube: BezierCube::new(Arc::clone(&gl)),
+            model: Model::new(Arc::clone(&gl)),
             room: Room::new(Arc::clone(&gl)),
             control_frame: ControlFrame::new(Arc::clone(&gl)),
 
@@ -336,6 +346,7 @@ impl Jelly {
 impl Presenter for Jelly {
     fn show_side_ui(&mut self, ui: &mut Ui) {
         self.bezier_cube.ui(ui);
+        self.model.ui(ui);
         self.control_frame.ui(ui);
         self.room.ui(ui);
     }
@@ -349,6 +360,8 @@ impl Presenter for Jelly {
         let aspect_ratio = size.width as f32 / size.height as f32;
 
         self.bezier_cube.draw(aspect_ratio, &self.camera);
+        self.model
+            .draw(aspect_ratio, &self.camera, &self.bezier_cube.flat_cube);
         self.control_frame.draw(aspect_ratio, &self.camera);
         self.room.draw(aspect_ratio, &self.camera);
     }

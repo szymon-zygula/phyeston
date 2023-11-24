@@ -25,8 +25,18 @@ impl Cube<f64> {
         array::from_fn(|i| {
             let u = (i / 4) / 4;
             let v = (i / 4) % 4;
-            let w = (i % 4) % 4;
+            let w = i % 4;
             self.0[u][v][w].map(|c| c as f32)
+        })
+    }
+
+    pub fn as_f32_flat(&self) -> [f32; 3 * 64] {
+        array::from_fn(|i| {
+            let u = i / 3 / 4 / 4;
+            let v = (i / 3 / 4) % 4;
+            let w = (i / 3) % 4;
+            let c = i % 3;
+            self.0[u][v][w][c] as f32
         })
     }
 }

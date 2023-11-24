@@ -12,7 +12,7 @@ macro_rules! fn_set_uniform {
     ($type:ty, $fn_name:ident) => {
         pub fn $fn_name(&self, name: &str, data: $type) {
             unsafe {
-                let location = self.gl.get_uniform_location(self.handle, name).unwrap();
+                let location = self.location(name);
                 self.gl.$fn_name(Some(&location), false, data);
             }
         }
@@ -67,56 +67,56 @@ impl GlProgram {
 
     pub fn uniform_f32(&self, name: &str, data: f32) {
         unsafe {
-            let location = self.gl.get_uniform_location(self.handle, name).unwrap();
+            let location = self.location(name);
             self.gl.uniform_1_f32(Some(&location), data);
         }
     }
 
     pub fn uniform_u32(&self, name: &str, data: u32) {
         unsafe {
-            let location = self.gl.get_uniform_location(self.handle, name).unwrap();
+            let location = self.location(name);
             self.gl.uniform_1_u32(Some(&location), data);
         }
     }
 
     pub fn uniform_i32(&self, name: &str, data: i32) {
         unsafe {
-            let location = self.gl.get_uniform_location(self.handle, name).unwrap();
+            let location = self.location(name);
             self.gl.uniform_1_i32(Some(&location), data);
         }
     }
 
     pub fn uniform_3_f32(&self, name: &str, x: f32, y: f32, z: f32) {
         unsafe {
-            let location = self.gl.get_uniform_location(self.handle, name).unwrap();
+            let location = self.location(name);
             self.gl.uniform_3_f32(Some(&location), x, y, z);
         }
     }
 
     pub fn uniform_4_f32(&self, name: &str, x: f32, y: f32, z: f32, w: f32) {
         unsafe {
-            let location = self.gl.get_uniform_location(self.handle, name).unwrap();
+            let location = self.location(name);
             self.gl.uniform_4_f32(Some(&location), x, y, z, w);
         }
     }
 
     pub fn uniform_3_f32_slice(&self, name: &str, slice: &[f32]) {
         unsafe {
-            let location = self.gl.get_uniform_location(self.handle, name).unwrap();
+            let location = self.location(name);
             self.gl.uniform_3_f32_slice(Some(&location), slice);
         }
     }
 
     pub fn uniform_4_f32_slice(&self, name: &str, slice: &[f32]) {
         unsafe {
-            let location = self.gl.get_uniform_location(self.handle, name).unwrap();
+            let location = self.location(name);
             self.gl.uniform_4_f32_slice(Some(&location), slice);
         }
     }
 
     pub fn uniform_f32_slice(&self, name: &str, slice: &[f32]) {
         unsafe {
-            let location = self.gl.get_uniform_location(self.handle, name).unwrap();
+            let location = self.location(name);
             self.gl.uniform_1_f32_slice(Some(&location), slice);
         }
     }
@@ -133,6 +133,11 @@ impl GlProgram {
         unsafe {
             self.gl.use_program(Some(self.handle));
         }
+    }
+
+    unsafe fn location(&self, name: &str) -> glow::UniformLocation {
+        let err = format!("Cannot find uniform {}", name);
+        self.gl.get_uniform_location(self.handle, name).expect(&err)
     }
 }
 
