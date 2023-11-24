@@ -164,6 +164,7 @@ struct Model {
 }
 
 impl Model {
+    const MODEL_COLOR: [f32; 4] = [0.1, 0.4, 1.0, 1.0];
     fn new(gl: Arc<glow::Context>) -> Self {
         let cube = bezier::Cube::new();
         Self {
@@ -176,7 +177,7 @@ impl Model {
                 Arc::clone(&gl),
                 &Mesh::from_file(Path::new("models/duck.txt")),
             ),
-            transform: na::Translation3::new(0.0, -0.5, 0.0).to_homogeneous()
+            transform: na::Translation3::new(0.5, 0.0, 0.5).to_homogeneous()
                 * na::Scale3::new(0.005, 0.005, 0.005).to_homogeneous(),
             show: true,
         }
@@ -212,7 +213,7 @@ impl Model {
             .uniform_3_f32_slice("ambient", LIGHT_AMBIENT.as_slice());
 
         self.program
-            .uniform_4_f32_slice("material_color", ROOM_COLOR.as_slice());
+            .uniform_4_f32_slice("material_color", Self::MODEL_COLOR.as_slice());
         self.program.uniform_f32("material_diffuse", 0.8);
         self.program.uniform_f32("material_specular", 0.4);
         self.program.uniform_f32("material_specular_exp", 10.0);
@@ -311,9 +312,10 @@ impl BezierCube {
         }
     }
 
-    fn update(&mut self, new_cube: bezier::Cube<f64>) {
-        self.flat_cube = new_cube.as_f32_flat();
-        self.cube = new_cube;
+    fn update_cube(&mut self) {
+        self.flat_cube = self.cube.as_f32_flat();
+        let cube_array = self.cube.as_f32_array();
+        self.point_cloud.update_points(&cube_array);
     }
 }
 

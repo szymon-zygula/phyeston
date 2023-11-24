@@ -50,22 +50,22 @@ vec3 tricubic_bezier(float u, float v, float w) {
     return bezier3(p0, p1, p2, p3, w);
 }
 
-const float SMALL_SCALE = 1e-10;
+const float SMALL_SCALE = 1e-4;
 
 void main() {
     float u = position.x;
     float v = position.y;
     float w = position.z;
 
-    vec3 deformed = tricubic_bezier(position.x, position.y, position.z);
+    vec3 org_world = (model * vec4(position, 1.0)).xyz;
 
-    vec3 position_small = position - normal * SMALL_SCALE;
-    vec3 deformed_small = tricubic_bezier(position_small.x, position_small.y, position_small.z);
-    vec3 deformed_normal = normalize(deformed_small - deformed);
+    vec3 deformed = tricubic_bezier(org_world.x, org_world.y, org_world.z);
 
-    vec4 world = model * vec4(deformed, 1.0f);
+    vec3 org_world_small = org_world - normal * SMALL_SCALE;
+    vec3 deformed_small = tricubic_bezier(org_world_small.x, org_world_small.y, org_world_small.z);
+    vec3 deformed_normal = normalize(deformed - deformed_small);
 
-    gl_Position = projection * view * world;
-    point.position = world.xyz;
-    point.normal = (model * vec4(deformed_normal, 0.0f)).xyz;
+    gl_Position = projection * view * vec4(deformed, 1.0f);
+    point.position = deformed;
+    point.normal = normalize((model * vec4(deformed_normal, 0.0f)).xyz);
 }
