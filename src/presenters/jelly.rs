@@ -1,7 +1,7 @@
 use super::Presenter;
 use super::PresenterBuilder;
 use crate::controls::{camera::Camera, mouse::MouseState};
-use crate::numerics::bezier;
+use crate::numerics::{bezier, ode};
 use crate::render::{
     gl_drawable::GlDrawable,
     gl_mesh::{GlLineStrip, GlLines, GlPointCloud, GlTriangleMesh},
@@ -9,10 +9,10 @@ use crate::render::{
     mesh::Mesh,
     models,
 };
+use crate::simulators::jelly::{self, JellyODE, JellyState};
 use crate::ui::widgets::vector_drag;
-use egui::Ui;
+use egui::{DragValue, Ui};
 use glow::HasContext;
-use itertools::Itertools;
 use nalgebra as na;
 use std::path::Path;
 use std::sync::Arc;
@@ -319,6 +319,62 @@ impl BezierCube {
     }
 }
 
+struct Simulation {
+    state: JellyState,
+    solver: Box<dyn ode::SolverWithDelta<{ jelly::ODE_DIM }, JellyODE>>,
+    simulation_speed: f64,
+    exact_t: f64,
+}
+
+impl Simulation {
+    fn new() -> Self {
+        Self {
+            state: JellyODE::default_state(),
+            solver: Box::new(ode::RungeKuttaIV::new(0.01, JellyODE::new())),
+            simulation_speed: 1.0,
+            exact_t: 0.0,
+        }
+    }
+
+    fn update(&mut self, cube: &mut BezierCube, delta: std::time::Duration) {
+        let elapsed_t = delta.as_secs_f64() * self.simulation_speed;
+        self.exact_t += elapsed_t;
+
+        while self.exact_t > self.state.t {
+            self.step_update(cube);
+        }
+    }
+
+    fn step_update(&mut self, cube: &mut BezierCube) {
+        self.state = self.solver.step(&self.state);
+
+        for idx in 0..jelly::POINT_COUNT {
+            let point = cube.cube.flat_mut(idx);
+            point.x = self.state.y[idx * 3 + 0];
+            point.y = self.state.y[idx * 3 + 1];
+            point.z = self.state.y[idx * 3 + 2];
+        }
+
+        cube.update_cube();
+    }
+
+    fn ui(&mut self, ui: &mut Ui) {
+        ui.label("Simulation speed");
+        ui.add(
+            DragValue::new(&mut self.simulation_speed)
+                .clamp_range(0.0..=f64::MAX)
+                .speed(0.01),
+        );
+
+        ui.label("Integration step");
+        ui.add(
+            DragValue::new(self.solver.delta_mut())
+                .clamp_range(0.001..=f64::MAX)
+                .speed(0.001),
+        );
+    }
+}
+
 pub struct Jelly {
     camera: Camera,
 
@@ -326,6 +382,7 @@ pub struct Jelly {
     model: Model,
     room: Room,
     control_frame: ControlFrame,
+    simulation: Simulation,
 
     gl: Arc<glow::Context>,
 }
@@ -339,6 +396,7 @@ impl Jelly {
             model: Model::new(Arc::clone(&gl)),
             room: Room::new(Arc::clone(&gl)),
             control_frame: ControlFrame::new(Arc::clone(&gl)),
+            simulation: Simulation::new(),
 
             gl,
         }
@@ -351,6 +409,7 @@ impl Presenter for Jelly {
         self.model.ui(ui);
         self.control_frame.ui(ui);
         self.room.ui(ui);
+        self.simulation.ui(ui);
     }
 
     fn show_bottom_ui(&mut self, ui: &mut Ui) {
@@ -368,7 +427,9 @@ impl Presenter for Jelly {
         self.room.draw(aspect_ratio, &self.camera);
     }
 
-    fn update(&mut self, delta: std::time::Duration) {}
+    fn update(&mut self, delta: std::time::Duration) {
+        self.simulation.update(&mut self.bezier_cube, delta);
+    }
 
     fn update_mouse(&mut self, state: MouseState) {
         self.camera.update_from_mouse(state);

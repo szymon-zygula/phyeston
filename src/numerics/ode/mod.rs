@@ -37,3 +37,9 @@ pub trait Solver<const DIM_OUT: usize, O: PlainODE<DIM_OUT>> {
     fn ode_mut(&mut self) -> &mut O;
     fn ode(&self) -> &O;
 }
+
+/// Ordinary Differential Equation Solver with customizable step
+pub trait SolverWithDelta<const DIM_OUT: usize, O: PlainODE<DIM_OUT>>: Solver<DIM_OUT, O> {
+    fn delta_mut(&mut self) -> &mut f64;
+    fn delta(&self) -> f64;
+}

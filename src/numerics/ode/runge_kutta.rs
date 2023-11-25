@@ -1,4 +1,4 @@
-use super::{PlainODE, Solver, State};
+use super::{PlainODE, Solver, SolverWithDelta, State};
 
 pub struct RungeKuttaIV<const DIM_OUT: usize, O: PlainODE<DIM_OUT>> {
     pub delta: f64,
@@ -55,5 +55,17 @@ impl<const DIM_OUT: usize, O: PlainODE<DIM_OUT>> Solver<DIM_OUT, O> for RungeKut
 
     fn ode(&self) -> &O {
         &self.ode
+    }
+}
+
+impl<const DIM_OUT: usize, O: PlainODE<DIM_OUT>> SolverWithDelta<DIM_OUT, O>
+    for RungeKuttaIV<DIM_OUT, O>
+{
+    fn delta_mut(&mut self) -> &mut f64 {
+        &mut self.delta
+    }
+
+    fn delta(&self) -> f64 {
+        self.delta
     }
 }
