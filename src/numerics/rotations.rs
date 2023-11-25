@@ -15,23 +15,11 @@ impl Quaternion {
         let y_angle = (-FRAC_PI_2
             + 2.0
                 * f64::atan2(
-                    (1.0 + 2.0 * (w * y - x * z)).sqrt(),
-                    (1.0 - 2.0 * (w * y - x * z)).sqrt(),
+                    (1.0 + 2.0 * (w * y - x * z)).max(0.0).sqrt(),
+                    (1.0 - 2.0 * (w * y - x * z)).max(0.0).sqrt(),
                 ))
         .to_degrees();
         let z_angle = f64::atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)).to_degrees();
-
-        // let test = w * x - y * z;
-
-        // Gimbal lock handling
-        // if test == 0.5 {
-        //     x_angle = 2.0 * f64::atan2(w, z);
-        //     z_angle = 0.0;
-        // } else if test == -0.5 {
-        //     x_angle = -2.0 * f64::atan2(w, z);
-        //     z_angle = 0.0;
-        // }
-        //
 
         EulerAngles(na::vector![x_angle, y_angle, z_angle]).normalize()
     }
