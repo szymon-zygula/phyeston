@@ -14,7 +14,9 @@ use crate::ui::widgets::vector_drag;
 use egui::{DragValue, Ui};
 use glow::HasContext;
 use nalgebra as na;
+use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::Arc;
 
 const ROOM_COLOR: na::Vector4<f32> = na::vector![0.8, 0.4, 0.2, 0.4];
@@ -82,29 +84,28 @@ impl Room {
 struct ControlFrame {
     program: GlProgram,
     strip: GlLineStrip,
-    translation: na::Vector3<f64>,
-    rotation: na::Quaternion<f64>,
-    transform: na::Matrix4<f32>,
+    transform: Rc<RefCell<jelly::ControlFrameTransform>>,
+    composed_transform: na::Matrix4<f32>,
     show: bool,
 }
 
 impl ControlFrame {
-    fn new(gl: Arc<glow::Context>) -> Self {
+    fn new(gl: Arc<glow::Context>, transform: Rc<RefCell<jelly::ControlFrameTransform>>) -> Self {
         Self {
             program: GlProgram::vertex_fragment(Arc::clone(&gl), "perspective_vert", "color_frag"),
             strip: GlLineStrip::new(Arc::clone(&gl), &models::wire_cube()),
-            translation: na::Vector3::zeros(),
-            rotation: na::Quaternion::new(1.0, 0.0, 0.0, 0.0),
-            transform: na::Matrix4::identity(),
+            transform,
+            composed_transform: na::Matrix4::identity(),
             show: true,
         }
     }
 
     fn recalculate_transform(&mut self) {
-        self.transform = na::Translation3::from(self.translation)
+        let transform = self.transform.borrow();
+        self.composed_transform = na::Translation3::from(transform.translation)
             .to_homogeneous()
             .map(|c| c as f32)
-            * na::UnitQuaternion::new_normalize(self.rotation)
+            * na::UnitQuaternion::new_normalize(transform.rotation)
                 .to_homogeneous()
                 .map(|c| c as f32);
     }
@@ -122,7 +123,7 @@ impl ControlFrame {
             camera.projection_transform(aspect_ratio).as_slice(),
         );
         self.program
-            .uniform_matrix_4_f32_slice("model_transform", self.transform.as_slice());
+            .uniform_matrix_4_f32_slice("model_transform", self.composed_transform.as_slice());
         self.program.uniform_4_f32("color", 0.0, 0.0, 0.0, 1.0);
 
         self.strip.draw();
@@ -132,9 +133,11 @@ impl ControlFrame {
         ui.checkbox(&mut self.show, "Show control frame");
         ui.label("Control frame position");
 
+        let mut transform = self.transform.borrow_mut();
+
         let result = vector_drag(
             ui,
-            &mut self.translation,
+            &mut transform.translation,
             -10.0,
             10.0,
             "",
@@ -142,13 +145,15 @@ impl ControlFrame {
             &["x", "y", "z"],
         ) | vector_drag(
             ui,
-            &mut self.rotation.coords,
+            &mut transform.rotation.coords,
             -1.0,
             1.0,
             "",
             0.01,
             &["x", "y", "z", "w"],
         );
+
+        drop(transform);
 
         if result.changed() {
             self.recalculate_transform();
@@ -327,10 +332,13 @@ struct Simulation {
 }
 
 impl Simulation {
-    fn new() -> Self {
+    fn new(control_frame_transform: Rc<RefCell<jelly::ControlFrameTransform>>) -> Self {
         Self {
             state: JellyODE::default_state(),
-            solver: Box::new(ode::RungeKuttaIV::new(0.01, JellyODE::new())),
+            solver: Box::new(ode::RungeKuttaIV::new(
+                0.01,
+                JellyODE::new(control_frame_transform),
+            )),
             simulation_speed: 1.0,
             exact_t: 0.0,
         }
@@ -389,14 +397,16 @@ pub struct Jelly {
 
 impl Jelly {
     pub fn new(gl: Arc<glow::Context>) -> Self {
+        let control_frame_transform = Rc::new(RefCell::new(jelly::ControlFrameTransform::new()));
+
         Self {
             camera: Camera::new(),
 
             bezier_cube: BezierCube::new(Arc::clone(&gl)),
             model: Model::new(Arc::clone(&gl)),
             room: Room::new(Arc::clone(&gl)),
-            control_frame: ControlFrame::new(Arc::clone(&gl)),
-            simulation: Simulation::new(),
+            control_frame: ControlFrame::new(Arc::clone(&gl), Rc::clone(&control_frame_transform)),
+            simulation: Simulation::new(control_frame_transform),
 
             gl,
         }
