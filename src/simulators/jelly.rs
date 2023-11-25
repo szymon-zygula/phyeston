@@ -46,8 +46,8 @@ impl JellyODE {
 
         Self {
             masses,
-            corner_spring_constant: 1.0,
-            inner_spring_constant: 1.0,
+            corner_spring_constant: 10.0,
+            inner_spring_constant: 3.0,
             damping_factor: 1.0,
             control_frame,
         }
@@ -75,6 +75,7 @@ impl JellyODE {
     ) -> na::Vector3<f64> {
         let diff = p_0 - p_1;
         let dist = (diff).norm();
+
         if dist == 0.0 {
             na::Vector3::zeros()
         } else {
@@ -125,8 +126,56 @@ impl JellyODE {
         }
     }
 
+    fn coord_neigh_range(i: i64) -> &'static [i64] {
+        if i == 0 {
+            &[0, 1]
+        } else if i == 3 {
+            &[-1, 0]
+        } else {
+            &[-1, 0, 1]
+        }
+    }
+
     fn inner_force(&self, state: &JellyState, u: usize, v: usize, w: usize) -> na::Vector3<f64> {
-        na::Vector3::zeros()
+        let u = u as i64;
+        let v = v as i64;
+        let w = w as i64;
+        let mut force_accumulator = na::Vector3::zeros();
+
+        for &du in Self::coord_neigh_range(u) {
+            for &dv in Self::coord_neigh_range(v) {
+                for &dw in Self::coord_neigh_range(w) {
+                    if (du == 0 && dv == 0 && dw == 0) || (du != 0 && dv != 0 && dw != 0) {
+                        continue;
+                    }
+
+                    let idx = (w + v * 4 + u * 16) as usize * 3;
+                    let idx_other = ((w + dw) + (v + dv) * 4 + (u + du) * 16) as usize * 3;
+                    let position = na::point![state.y[idx], state.y[idx + 1], state.y[idx + 2]];
+                    let other_position = na::point![
+                        state.y[idx_other],
+                        state.y[idx_other + 1],
+                        state.y[idx_other + 2]
+                    ];
+
+                    let diagonal_spring = ((du + dv + dw) % 2).abs() == 0;
+
+                    force_accumulator += Self::spring_force(
+                        &other_position,
+                        &position,
+                        2.0 / 3.0
+                            * if diagonal_spring {
+                                std::f64::consts::SQRT_2
+                            } else {
+                                1.0
+                            },
+                        self.inner_spring_constant,
+                    );
+                }
+            }
+        }
+
+        force_accumulator
     }
 
     fn damping_force(&self, state: &JellyState, u: usize, v: usize, w: usize) -> na::Vector3<f64> {
