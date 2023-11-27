@@ -104,28 +104,26 @@ pub fn wire_cube() -> Vec<na::Point3<f32>> {
 
 /// For GlLines
 pub fn wire_grid() -> Vec<na::Point3<f32>> {
+    wire_grid_from_fn(|u, v, w| na::point![u as f32 / 3.0, v as f32 / 3.0, w as f32 / 3.0])
+}
+
+pub fn wire_grid_from_fn<F: Fn(usize, usize, usize) -> na::Point3<f32>>(
+    f: F,
+) -> Vec<na::Point3<f32>> {
     (0..3)
         .cartesian_product(0..4)
         .cartesian_product(0..4)
         .flat_map(|((u, v), w)| {
-            let un = (u + 1) as f32 / 3.0;
-            let u = u as f32 / 3.0;
-            let v = v as f32 / 3.0;
-            let w = w as f32 / 3.0;
-
-            [na::point![u, v, w], na::point![un, v, w]]
+            let un = u + 1;
+            [f(u, v, w), f(un, v, w)]
         })
         .chain(
             (0..4)
                 .cartesian_product(0..3)
                 .cartesian_product(0..4)
                 .flat_map(|((u, v), w)| {
-                    let vn = (v + 1) as f32 / 3.0;
-                    let u = u as f32 / 3.0;
-                    let v = v as f32 / 3.0;
-                    let w = w as f32 / 3.0;
-
-                    [na::point![u, v, w], na::point![u, vn, w]]
+                    let vn = v + 1;
+                    [f(u, v, w), f(u, vn, w)]
                 }),
         )
         .chain(
@@ -133,12 +131,8 @@ pub fn wire_grid() -> Vec<na::Point3<f32>> {
                 .cartesian_product(0..4)
                 .cartesian_product(0..3)
                 .flat_map(|((u, v), w)| {
-                    let wn = (w + 1) as f32 / 3.0;
-                    let u = u as f32 / 3.0;
-                    let v = v as f32 / 3.0;
-                    let w = w as f32 / 3.0;
-
-                    [na::point![u, v, w], na::point![u, v, wn]]
+                    let wn = w + 1;
+                    [f(u, v, w), f(u, v, wn)]
                 }),
         )
         .map(|p| 2.0 * p - na::vector![1.0, 1.0, 1.0])

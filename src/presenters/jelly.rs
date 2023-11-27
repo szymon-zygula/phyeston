@@ -321,6 +321,10 @@ impl BezierCube {
         self.flat_cube = self.cube.as_f32_flat();
         let cube_array = self.cube.as_f32_array();
         self.point_cloud.update_points(&cube_array);
+        self.grid_lines
+            .update_points(&models::wire_grid_from_fn(|u, v, w| {
+                self.cube.0[u][v][w].map(|c| (c + 1.0) as f32 * 0.5)
+            }))
     }
 }
 
