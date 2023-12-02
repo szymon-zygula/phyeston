@@ -7,3 +7,5 @@ pub mod mesh;
 pub mod models;
 pub mod opengl;
 pub mod shader;
+pub mod texture;
+pub mod gl_texture;
