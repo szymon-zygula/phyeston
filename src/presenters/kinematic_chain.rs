@@ -39,6 +39,7 @@ pub struct KinematicChain {
 
     system: flat_chain::System,
     config_state: flat_chain::ReverseSolutions,
+    target: na::Point2<f64>,
 
     simulation_speed: f64,
 
@@ -59,6 +60,7 @@ impl KinematicChain {
 
             system: flat_chain::System::new(100.0, 100.0),
             config_state: flat_chain::ReverseSolutions::One(na::Point2::origin()),
+            target: Self::ARM_ORIGIN + na::vector![200.0, 0.0],
 
             simulation_speed: 1.0,
 
@@ -191,10 +193,10 @@ impl KinematicChain {
             return;
         };
 
-        let current_point = na::point![position.x, position.y];
+        self.target = na::point![position.x, position.y];
         self.config_state = self
             .system
-            .inverse_kinematics(&(current_point - Self::ARM_ORIGIN).into());
+            .inverse_kinematics(&(self.target - Self::ARM_ORIGIN).into());
         self.update_arm_mesh();
     }
 }
@@ -207,6 +209,9 @@ impl Presenter for KinematicChain {
             | ui.add(DragValue::new(&mut self.system.l_2).clamp_range(0.0..=300.0)))
         .changed()
         {
+            self.config_state = self
+                .system
+                .inverse_kinematics(&(self.target - Self::ARM_ORIGIN).into());
             self.update_arm_mesh();
         }
 

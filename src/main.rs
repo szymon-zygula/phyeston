@@ -71,7 +71,9 @@ fn main() {
                 window.window().request_redraw();
             }
 
-            mouse.handle_window_event(&event);
+            if !event_response.consumed {
+                mouse.handle_window_event(&event);
+            }
         }
         winit::event::Event::LoopDestroyed => {
             egui_glow.destroy();
