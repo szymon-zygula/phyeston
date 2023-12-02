@@ -38,7 +38,7 @@ pub struct KinematicChain {
     rects: Vec<Rect>,
 
     system: flat_chain::System,
-    config_state: na::Vector2<f64>,
+    config_state: flat_chain::ReverseSolutions,
 
     simulation_speed: f64,
 
@@ -52,13 +52,13 @@ impl KinematicChain {
         let mut me = Self {
             rect_program: GlProgram::vertex_fragment(Arc::clone(&gl), "2d_vert", "pass_frag"),
             rect_mesh: GlTriangleMesh::new(Arc::clone(&gl), &models::rect()),
-            arm_mesh: GlLines::new(Arc::clone(&gl), &[na::Point::origin(); 4]),
+            arm_mesh: GlLines::new(Arc::clone(&gl), &[na::Point::origin(); 8]),
 
             drawing_rect: DrawingRectState::NotDrawing,
             rects: Vec::new(),
 
             system: flat_chain::System::new(100.0, 100.0),
-            config_state: na::vector![0.0, 0.0],
+            config_state: flat_chain::ReverseSolutions::One(na::Point2::origin()),
 
             simulation_speed: 1.0,
 
@@ -71,14 +71,33 @@ impl KinematicChain {
     }
 
     fn update_arm_mesh(&mut self) {
-        let mut state = self.system.forward_kinematics(&self.config_state);
+        let origin = na::point![Self::ARM_ORIGIN.x as f32, Self::ARM_ORIGIN.y as f32, 0.0];
+
+        self.arm_mesh.update_points(&match self.config_state {
+            flat_chain::ReverseSolutions::Two(state_1, state_2) => [
+                self.state_to_points(&state_1),
+                self.state_to_points(&state_2),
+            ]
+            .concat(),
+            flat_chain::ReverseSolutions::One(state) => {
+                [[origin; 4], self.state_to_points(&state)].concat()
+            }
+            flat_chain::ReverseSolutions::None => vec![origin; 8],
+            flat_chain::ReverseSolutions::InfinitelyMany => vec![origin; 8],
+        });
+    }
+
+    fn state_to_points(&self, state: &na::Point2<f64>) -> [na::Point3<f32>; 4] {
+        let origin = na::point![Self::ARM_ORIGIN.x as f32, Self::ARM_ORIGIN.y as f32, 0.0];
+
+        let mut state = self.system.forward_kinematics(state);
+
         state.p_1 += Self::ARM_ORIGIN.coords;
         state.p_2 += Self::ARM_ORIGIN.coords;
         let p_1 = na::point![state.p_1.x as f32, state.p_1.y as f32, 0.0];
         let p_2 = na::point![state.p_2.x as f32, state.p_2.y as f32, 0.0];
-        let origin = na::point![Self::ARM_ORIGIN.x as f32, Self::ARM_ORIGIN.y as f32, 0.0];
 
-        self.arm_mesh.update_points(&[origin, p_1, p_1, p_2]);
+        [origin, p_1, p_1, p_2]
     }
 
     fn view_matrix(size: PhysicalSize<u32>) -> na::Matrix4<f32> {
@@ -163,7 +182,21 @@ impl KinematicChain {
         }
     }
 
-    fn handle_target_setting(&mut self, state: &MouseState) {}
+    fn handle_target_setting(&mut self, state: &MouseState) {
+        if !state.is_left_button_down() {
+            return;
+        }
+
+        let Some(position) = state.position() else {
+            return;
+        };
+
+        let current_point = na::point![position.x, position.y];
+        self.config_state = self
+            .system
+            .inverse_kinematics(&(current_point - Self::ARM_ORIGIN).into());
+        self.update_arm_mesh();
+    }
 }
 
 impl Presenter for KinematicChain {
