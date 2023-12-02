@@ -3,10 +3,11 @@ use crate::{
     controls::mouse::MouseState,
     numerics::kinematics::flat_chain,
     render::{
-        drawbuffer::Drawbuffer, gl_drawable::GlDrawable, gl_mesh::GlTriangleMesh,
-        gl_program::GlProgram, models,
+        gl_drawable::GlDrawable,
+        gl_mesh::{GlLines, GlTriangleMesh},
+        gl_program::GlProgram,
+        models,
     },
-    ui::widgets,
 };
 use egui::{widgets::DragValue, Ui};
 use egui_winit::winit::dpi::PhysicalSize;
@@ -31,51 +32,84 @@ enum DrawingRectState {
 pub struct KinematicChain {
     rect_program: GlProgram,
     rect_mesh: GlTriangleMesh,
+    arm_mesh: GlLines,
 
     drawing_rect: DrawingRectState,
     rects: Vec<Rect>,
+
     system: flat_chain::System,
+    config_state: na::Vector2<f64>,
+
     simulation_speed: f64,
+
     gl: Arc<glow::Context>,
 }
 
 impl KinematicChain {
+    const ARM_ORIGIN: na::Point2<f64> = na::point![1000.0, 500.0];
+
     fn new(gl: Arc<glow::Context>) -> Self {
-        Self {
+        let mut me = Self {
             rect_program: GlProgram::vertex_fragment(Arc::clone(&gl), "2d_vert", "pass_frag"),
             rect_mesh: GlTriangleMesh::new(Arc::clone(&gl), &models::rect()),
+            arm_mesh: GlLines::new(Arc::clone(&gl), &[na::Point::origin(); 4]),
 
             drawing_rect: DrawingRectState::NotDrawing,
             rects: Vec::new(),
-            system: flat_chain::System::new(1.0, 1.0),
+
+            system: flat_chain::System::new(100.0, 100.0),
+            config_state: na::vector![0.0, 0.0],
+
             simulation_speed: 1.0,
+
             gl,
-        }
+        };
+
+        me.update_arm_mesh();
+
+        me
     }
 
-    fn draw_rects(&self, size: Option<egui_winit::winit::dpi::PhysicalSize<u32>>) {
-        let Some(size) = size else { return };
+    fn update_arm_mesh(&mut self) {
+        let mut state = self.system.forward_kinematics(&self.config_state);
+        state.p_1 += Self::ARM_ORIGIN.coords;
+        state.p_2 += Self::ARM_ORIGIN.coords;
+        let p_1 = na::point![state.p_1.x as f32, state.p_1.y as f32, 0.0];
+        let p_2 = na::point![state.p_2.x as f32, state.p_2.y as f32, 0.0];
+        let origin = na::point![Self::ARM_ORIGIN.x as f32, Self::ARM_ORIGIN.y as f32, 0.0];
+
+        self.arm_mesh.update_points(&[origin, p_1, p_1, p_2]);
+    }
+
+    fn view_matrix(size: PhysicalSize<u32>) -> na::Matrix4<f32> {
         let width = size.width as f32;
         let height = size.height as f32;
-        let aspect_ratio = width / height;
+
+        na::matrix![
+            2.0 / width, 0.0, 0.0, -1.0;
+            0.0, -2.0 / height, 0.0, 1.0;
+            0.0, 0.0, 1.0, 0.0;
+            0.0, 0.0, 0.0, 1.0;
+        ]
+    }
+
+    fn draw_arm(&self, size: Option<PhysicalSize<u32>>) {
+        let Some(size) = size else { return };
 
         self.rect_program.enable();
+        self.rect_program
+            .uniform_matrix_4_f32_slice("view_transform", Self::view_matrix(size).as_slice());
+        self.rect_program
+            .uniform_matrix_4_f32_slice("model_transform", na::Matrix4::identity().as_slice());
+        self.arm_mesh.draw();
+    }
 
-        self.rect_program.uniform_matrix_4_f32_slice(
-            "view_transform",
-            (na::matrix![
-                1.0, 0.0, 0.0, 0.0;
-                0.0, 1.0, 0.0, 0.0;
-                0.0, 0.0, 1.0, 0.0;
-                0.0, 0.0, 0.0, 1.0;
-            ] * na::matrix![
-                2.0 / width, 0.0, 0.0, -1.0;
-                0.0, -2.0 / height, 0.0, 1.0;
-                0.0, 0.0, 1.0, 0.0;
-                0.0, 0.0, 0.0, 1.0;
-            ])
-            .as_slice(),
-        );
+    fn draw_rects(&self, size: Option<PhysicalSize<u32>>) {
+        let Some(size) = size else { return };
+
+        self.rect_program.enable();
+        self.rect_program
+            .uniform_matrix_4_f32_slice("view_transform", Self::view_matrix(size).as_slice());
 
         unsafe { self.gl.disable(glow::CULL_FACE) };
 
@@ -135,9 +169,13 @@ impl KinematicChain {
 impl Presenter for KinematicChain {
     fn show_side_ui(&mut self, ui: &mut Ui) {
         ui.add(DragValue::new(&mut self.simulation_speed).clamp_range(0.0..=100.0));
-        ui.add(DragValue::new(&mut self.system.l_1).clamp_range(0.0..=5.0));
-        ui.add(DragValue::new(&mut self.system.l_2).clamp_range(0.0..=5.0));
-        ui.add(DragValue::new(&mut self.simulation_speed).clamp_range(0.0..=100.0));
+
+        if (ui.add(DragValue::new(&mut self.system.l_1).clamp_range(0.0..=300.0))
+            | ui.add(DragValue::new(&mut self.system.l_2).clamp_range(0.0..=300.0)))
+        .changed()
+        {
+            self.update_arm_mesh();
+        }
 
         ui.label("Rects");
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -156,6 +194,7 @@ impl Presenter for KinematicChain {
 
     fn draw(&self, size: Option<egui_winit::winit::dpi::PhysicalSize<u32>>) {
         self.draw_rects(size);
+        self.draw_arm(size);
     }
 
     fn update(&mut self, delta: std::time::Duration) {}

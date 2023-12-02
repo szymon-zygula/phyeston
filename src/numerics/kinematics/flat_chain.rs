@@ -13,6 +13,11 @@ enum MiddleSolutions {
     None,
 }
 
+pub struct State {
+    pub p_1: na::Point2<f64>,
+    pub p_2: na::Point2<f64>,
+}
+
 pub struct System {
     pub l_1: f64,
     pub l_2: f64,
@@ -21,6 +26,18 @@ pub struct System {
 impl System {
     pub fn new(l_1: f64, l_2: f64) -> Self {
         Self { l_1, l_2 }
+    }
+
+    pub fn forward_kinematics(&self, config_state: &na::Vector2<f64>) -> State {
+        let p_1 = na::Point2::origin()
+            + self.l_1 * na::vector![config_state.x.cos(), config_state.x.sin()];
+        let p_2 = p_1
+            + self.l_2
+                * na::vector![
+                    (config_state.x + config_state.y).cos(),
+                    (config_state.x + config_state.y).sin()
+                ];
+        State { p_1, p_2 }
     }
 
     pub fn reverse_kinematics(&self, target: &na::Vector2<f64>) -> ReverseSolutions {
