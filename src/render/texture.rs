@@ -159,4 +159,8 @@ impl Texture {
     pub fn height(&self) -> f32 {
         self.image.height() as f32
     }
+
+    pub fn put(&mut self, x: u32, y: u32, color: Rgba<u8>) {
+        self.image.put_pixel(x, y, color)
+    }
 }

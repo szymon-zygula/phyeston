@@ -1,27 +1,19 @@
 use super::{Presenter, PresenterBuilder};
-use crate::{
-    controls::mouse::MouseState,
-    numerics::kinematics::flat_chain,
-    render::{
-        gl_drawable::GlDrawable,
-        gl_mesh::{GlLines, GlTriangleMesh},
-        gl_program::GlProgram,
-        models,
-    },
+use crate::controls::mouse::MouseState;
+use crate::numerics::kinematics::flat_chain;
+use crate::render::{
+    gl_drawable::GlDrawable,
+    gl_mesh::{GlLines, GlTriangleMesh},
+    gl_program::GlProgram,
+    gl_texture::GlTexture,
+    models,
 };
+use crate::simulators::kinematic_chain::*;
 use egui::{widgets::DragValue, Ui};
 use egui_winit::winit::dpi::PhysicalSize;
 use glow::HasContext;
 use nalgebra as na;
 use std::sync::Arc;
-
-const ORIGIN: na::Point2<f32> = na::point![800.0, 500.0];
-
-#[derive(Clone, Copy, Debug)]
-struct Rect {
-    p_1: na::Point2<f64>,
-    p_2: na::Point2<f64>,
-}
 
 #[derive(Debug)]
 enum DrawingRectState {
@@ -31,15 +23,26 @@ enum DrawingRectState {
 
 pub struct KinematicChain {
     rect_program: GlProgram,
+    texture_program: GlProgram,
     rect_mesh: GlTriangleMesh,
-    arm_mesh: GlLines,
 
     drawing_rect: DrawingRectState,
     rects: Vec<Rect>,
 
+    config_state_start: flat_chain::ReverseSolutions,
+    start: na::Point2<f64>,
+    start_arm_mesh: GlLines,
+
+    config_state_current: flat_chain::ReverseSolutions,
+    current_arm_mesh: GlLines,
+
+    config_state_end: flat_chain::ReverseSolutions,
+    end: na::Point2<f64>,
+    end_arm_mesh: GlLines,
+
+    config_obstuction: ConfigObstuction,
+    texture: GlTexture,
     system: flat_chain::System,
-    config_state: flat_chain::ReverseSolutions,
-    target: na::Point2<f64>,
 
     simulation_speed: f64,
 
@@ -50,17 +53,36 @@ impl KinematicChain {
     const ARM_ORIGIN: na::Point2<f64> = na::point![1000.0, 500.0];
 
     fn new(gl: Arc<glow::Context>) -> Self {
+        let system = flat_chain::System::new(100.0, 100.0);
+        let config_obstuction = ConfigObstuction::new(system, Self::ARM_ORIGIN);
+        let texture = config_obstuction.texture();
+
         let mut me = Self {
             rect_program: GlProgram::vertex_fragment(Arc::clone(&gl), "2d_vert", "pass_frag"),
+            texture_program: GlProgram::vertex_fragment(
+                Arc::clone(&gl),
+                "texture_vert",
+                "texture_frag",
+            ),
             rect_mesh: GlTriangleMesh::new(Arc::clone(&gl), &models::rect()),
-            arm_mesh: GlLines::new(Arc::clone(&gl), &[na::Point::origin(); 8]),
 
             drawing_rect: DrawingRectState::NotDrawing,
             rects: Vec::new(),
 
-            system: flat_chain::System::new(100.0, 100.0),
-            config_state: flat_chain::ReverseSolutions::One(na::Point2::origin()),
-            target: Self::ARM_ORIGIN + na::vector![200.0, 0.0],
+            config_state_start: flat_chain::ReverseSolutions::One(na::Point2::origin()),
+            start: Self::ARM_ORIGIN + na::vector![200.0, 0.0],
+            start_arm_mesh: GlLines::new(Arc::clone(&gl), &[na::Point::origin(); 8]),
+
+            config_state_current: flat_chain::ReverseSolutions::One(na::Point2::origin()),
+            current_arm_mesh: GlLines::new(Arc::clone(&gl), &[na::Point::origin(); 8]),
+
+            config_state_end: flat_chain::ReverseSolutions::One(na::Point2::origin()),
+            end: Self::ARM_ORIGIN + na::vector![200.0, 0.0],
+            end_arm_mesh: GlLines::new(Arc::clone(&gl), &[na::Point::origin(); 8]),
+
+            config_obstuction,
+            texture: GlTexture::new(Arc::clone(&gl), &texture),
+            system,
 
             simulation_speed: 1.0,
 
@@ -73,9 +95,17 @@ impl KinematicChain {
     }
 
     fn update_arm_mesh(&mut self) {
-        let origin = na::point![Self::ARM_ORIGIN.x as f32, Self::ARM_ORIGIN.y as f32, 0.0];
+        self.start_arm_mesh
+            .update_points(&self.arm_points(&self.config_state_start));
+        self.end_arm_mesh
+            .update_points(&self.arm_points(&self.config_state_end));
+        self.current_arm_mesh
+            .update_points(&self.arm_points(&self.config_state_current));
+    }
 
-        self.arm_mesh.update_points(&match self.config_state {
+    fn arm_points(&self, config: &flat_chain::ReverseSolutions) -> Vec<na::Point3<f32>> {
+        let origin = na::point![Self::ARM_ORIGIN.x as f32, Self::ARM_ORIGIN.y as f32, 0.0];
+        match config {
             flat_chain::ReverseSolutions::Two(state_1, state_2) => [
                 self.state_to_points(&state_1),
                 self.state_to_points(&state_2),
@@ -86,7 +116,7 @@ impl KinematicChain {
             }
             flat_chain::ReverseSolutions::None => vec![origin; 8],
             flat_chain::ReverseSolutions::InfinitelyMany => vec![origin; 8],
-        });
+        }
     }
 
     fn state_to_points(&self, state: &na::Point2<f64>) -> [na::Point3<f32>; 4] {
@@ -122,7 +152,35 @@ impl KinematicChain {
             .uniform_matrix_4_f32_slice("view_transform", Self::view_matrix(size).as_slice());
         self.rect_program
             .uniform_matrix_4_f32_slice("model_transform", na::Matrix4::identity().as_slice());
-        self.arm_mesh.draw();
+
+        self.start_arm_mesh.draw();
+        self.current_arm_mesh.draw();
+        self.end_arm_mesh.draw();
+    }
+
+    fn draw_texture(&self, size: Option<PhysicalSize<u32>>) {
+        let Some(size) = size else { return };
+        let aspect_ratio = size.width as f32 / size.height as f32;
+
+        self.texture_program.enable();
+        self.texture_program.uniform_matrix_4_f32_slice(
+            "view_transform",
+            na::matrix![
+                1.0 / aspect_ratio, 0.0, 0.0, 0.0;
+                0.0, 1.0, 0.0, 0.0;
+                0.0, 0.0, 1.0, 0.0;
+                0.0, 0.0, 0.0, 1.0;
+            ]
+            .as_slice(),
+        );
+        self.texture_program.uniform_matrix_4_f32_slice(
+            "model_transform",
+            na::Translation3::new(aspect_ratio * 1.0 - 0.25, 0.75, -1.0)
+                .to_homogeneous()
+                .as_slice(),
+        );
+        self.texture.bind_to_image_unit(0);
+        self.rect_mesh.draw();
     }
 
     fn draw_rects(&self, size: Option<PhysicalSize<u32>>) {
@@ -160,7 +218,7 @@ impl KinematicChain {
     }
 
     fn handle_rect_setting(&mut self, state: &MouseState) {
-        if state.is_right_button_down() {
+        if state.is_middle_button_down() {
             if let Some(position) = state.position() {
                 let current_point = na::point![position.x, position.y];
                 self.drawing_rect = match self.drawing_rect {
@@ -185,19 +243,27 @@ impl KinematicChain {
     }
 
     fn handle_target_setting(&mut self, state: &MouseState) {
-        if !state.is_left_button_down() {
-            return;
-        }
-
         let Some(position) = state.position() else {
             return;
         };
 
-        self.target = na::point![position.x, position.y];
-        self.config_state = self
-            .system
-            .inverse_kinematics(&(self.target - Self::ARM_ORIGIN).into());
-        self.update_arm_mesh();
+        if state.is_left_button_down() {
+            self.start = na::point![position.x, position.y];
+            self.config_state_start = self
+                .system
+                .inverse_kinematics(&(self.start - Self::ARM_ORIGIN).into());
+
+            self.update_arm_mesh();
+        }
+
+        if state.is_right_button_down() {
+            self.end = na::point![position.x, position.y];
+            self.config_state_end = self
+                .system
+                .inverse_kinematics(&(self.end - Self::ARM_ORIGIN).into());
+
+            self.update_arm_mesh();
+        }
     }
 }
 
@@ -209,9 +275,13 @@ impl Presenter for KinematicChain {
             | ui.add(DragValue::new(&mut self.system.l_2).clamp_range(0.0..=300.0)))
         .changed()
         {
-            self.config_state = self
+            self.config_state_start = self
                 .system
-                .inverse_kinematics(&(self.target - Self::ARM_ORIGIN).into());
+                .inverse_kinematics(&(self.start - Self::ARM_ORIGIN).into());
+            self.config_state_end = self
+                .system
+                .inverse_kinematics(&(self.end - Self::ARM_ORIGIN).into());
+
             self.update_arm_mesh();
         }
 
@@ -233,6 +303,7 @@ impl Presenter for KinematicChain {
     fn draw(&self, size: Option<egui_winit::winit::dpi::PhysicalSize<u32>>) {
         self.draw_rects(size);
         self.draw_arm(size);
+        self.draw_texture(size);
     }
 
     fn update(&mut self, delta: std::time::Duration) {}

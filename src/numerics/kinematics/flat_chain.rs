@@ -19,6 +19,7 @@ pub struct State {
     pub p_2: na::Point2<f64>,
 }
 
+#[derive(Clone, Copy)]
 pub struct System {
     pub l_1: f64,
     pub l_2: f64,

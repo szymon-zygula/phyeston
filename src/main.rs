@@ -17,6 +17,7 @@ fn main() {
     let window = unsafe { Window::new(&event_loop) };
 
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, window.clone_gl(), None);
+    egui_extras::install_image_loaders(&mut egui_glow.egui_ctx);
 
     let mut builders: Vec<Box<dyn PresenterBuilder>> = vec![
         Box::new(KinematicChainBuilder::new()),

@@ -13,9 +13,10 @@ num-traits = "0.2.17"
 itertools = "0.11.0"
 nalgebra = "0.32.3"
 egui = { version = "0.23.0", features = ['default_fonts'] }
-egui_glow = { version = "0.23.0", features = ['winit']}
+egui_glow = { version = "0.23.0", features = ['winit'] }
 egui_plot = "0.23.0"
 egui-winit = { version = "0.23.0" }
+egui_extras = { version = "0.23.0", features = ["all_loaders"] }
 glow = "0.12.3"
 glutin = "0.30.10"
 glutin-winit = "0.3.0"
