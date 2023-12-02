@@ -3,6 +3,7 @@ use nalgebra as na;
 pub mod bezier;
 pub mod ode;
 pub mod rotations;
+pub mod kinematics;
 pub use ode::EulerODESolver;
 pub use ode::RungeKuttaIV;
 pub use ode::ODE;
