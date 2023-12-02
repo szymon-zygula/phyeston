@@ -14,8 +14,8 @@ enum MiddleSolutions {
 }
 
 pub struct System {
-    l_1: f64,
-    l_2: f64,
+    pub l_1: f64,
+    pub l_2: f64,
 }
 
 impl System {
