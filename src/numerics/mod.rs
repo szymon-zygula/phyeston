@@ -4,9 +4,14 @@ pub mod bezier;
 pub mod ode;
 pub mod rotations;
 pub mod kinematics;
+pub mod segment;
+pub mod rect;
+
 pub use ode::EulerODESolver;
 pub use ode::RungeKuttaIV;
 pub use ode::ODE;
+pub use segment::Segment;
+pub use rect::Rect;
 
 pub trait Float:
     std::ops::AddAssign

@@ -1,6 +1,6 @@
 use super::{Presenter, PresenterBuilder};
 use crate::controls::mouse::MouseState;
-use crate::numerics::kinematics::flat_chain;
+use crate::numerics::{kinematics::flat_chain, Rect};
 use crate::render::{
     gl_drawable::GlDrawable,
     gl_mesh::{GlLines, GlTriangleMesh},
@@ -92,6 +92,10 @@ impl KinematicChain {
         me.update_arm_mesh();
 
         me
+    }
+
+    fn update_obstruction_texture(&mut self) {
+        self.texture = GlTexture::new(Arc::clone(&self.gl), &self.config_obstuction.texture());
     }
 
     fn update_arm_mesh(&mut self) {
@@ -236,8 +240,10 @@ impl KinematicChain {
             }
         } else {
             if let DrawingRectState::Drawing(rect) = &self.drawing_rect {
+                self.config_obstuction.add_rect(rect);
                 self.rects.push(*rect);
                 self.drawing_rect = DrawingRectState::NotDrawing;
+                self.update_obstruction_texture();
             }
         }
     }
