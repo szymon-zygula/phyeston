@@ -7,6 +7,7 @@ pub mod parametrizable_function;
 pub mod quaternions;
 pub mod spinning_top;
 pub mod spring;
+pub mod kinematic_chain;
 
 pub trait Presenter {
     fn show_bottom_ui(&mut self, ui: &mut egui::Ui);

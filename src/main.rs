@@ -3,8 +3,9 @@ use egui_winit::winit::{self, platform::run_return::EventLoopExtRunReturn};
 use phyesthon::{
     controls::mouse::MouseState,
     presenters::{
-        jelly::JellyBuilder, quaternions::QuaternionsBuilder, spinning_top::SpinningTopBuilder,
-        spring::SpringBuilder, Presenter, PresenterBuilder,
+        jelly::JellyBuilder, kinematic_chain::KinematicChainBuilder,
+        quaternions::QuaternionsBuilder, spinning_top::SpinningTopBuilder, spring::SpringBuilder,
+        Presenter, PresenterBuilder,
     },
     window::Window,
 };
@@ -16,13 +17,16 @@ fn main() {
     let window = unsafe { Window::new(&event_loop) };
 
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, window.clone_gl(), None);
+    egui_extras::install_image_loaders(&mut egui_glow.egui_ctx);
 
     let mut builders: Vec<Box<dyn PresenterBuilder>> = vec![
+        Box::new(KinematicChainBuilder::new()),
         Box::new(JellyBuilder::new()),
         Box::new(QuaternionsBuilder::new()),
         Box::new(SpinningTopBuilder::new()),
         Box::new(SpringBuilder::new()),
     ];
+
 
     let mut presenters: Vec<Box<dyn Presenter>> = builders
         .iter()
@@ -69,7 +73,9 @@ fn main() {
                 window.window().request_redraw();
             }
 
-            mouse.handle_window_event(&event);
+            if !event_response.consumed {
+                mouse.handle_window_event(&event);
+            }
         }
         winit::event::Event::LoopDestroyed => {
             egui_glow.destroy();

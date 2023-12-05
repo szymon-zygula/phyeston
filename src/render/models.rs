@@ -169,3 +169,17 @@ pub fn double_plane() -> Mesh<ClassicVertex> {
         triangles,
     }
 }
+
+pub fn rect() -> Mesh<na::Point3<f32>> {
+    // 0 1
+    // 3 2
+    Mesh::new(
+        vec![
+            na::point!(-0.25, 0.25, 0.0),
+            na::point!(0.25, 0.25, 0.0),
+            na::point!(0.25, -0.25, 0.0),
+            na::point!(-0.25, -0.25, 0.0),
+        ],
+        vec![Triangle([2, 1, 0]), Triangle([3, 2, 0])],
+    )
+}
