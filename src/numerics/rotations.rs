@@ -29,15 +29,21 @@ impl Quaternion {
     }
 
     pub fn lerp(&self, other: &Quaternion, t: f64) -> Quaternion {
+        let other = if other.0.dot(&self.0) < 0.0 {
+            -*other
+        } else {
+            *other
+        };
+
         if other.is_zero() && self.is_zero() {
-            return Quaternion(na::vector![1.0, 0.0, 0.0, 0.0]);
+            return Quaternion(na::vector![0.0, 0.0, 0.0, 0.0]);
         }
 
         let new = Quaternion(self.0 * (1.0 - t) + other.0 * t);
         if new.is_zero() {
             let new_t = t + if t == 1.0 { -1.0 } else { 1.0 } * 10.0 * f64::EPSILON;
 
-            self.lerp(other, new_t)
+            self.lerp(&other, new_t)
         } else {
             new.normalize()
         }

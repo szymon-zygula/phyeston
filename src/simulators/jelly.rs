@@ -42,7 +42,7 @@ pub struct JellyODE {
 
 impl JellyODE {
     pub fn new(control_frame: Rc<RefCell<ControlFrameTransform>>) -> Self {
-        let masses = array::from_fn(|u| array::from_fn(|v| array::from_fn(|w| 1.0)));
+        let masses = array::from_fn(|_| array::from_fn(|_| array::from_fn(|_| 1.0)));
 
         Self {
             masses,

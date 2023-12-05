@@ -322,3 +322,49 @@ impl GlDrawable for GlLines {
         }
     }
 }
+
+pub struct GlTesselationBicubicPatch {
+    gl: Arc<glow::Context>,
+    vertex_buffer: glow::Buffer,
+    vertex_array: glow::VertexArray,
+}
+
+impl GlTesselationBicubicPatch {
+    const VERTEX_COUNT: i32 = 16;
+
+    pub fn new(gl: Arc<glow::Context>, surface_points: &[[na::Point3<f32>; 4]; 4]) -> Self {
+        let (vertex_array, vertex_buffer) = Self::create_vao_vbo(&gl, surface_points);
+        Self {
+            gl,
+            vertex_array,
+            vertex_buffer,
+        }
+    }
+
+    fn create_vao_vbo(
+        gl: &glow::Context,
+        input: &[[na::Point3<f32>; 4]; 4],
+    ) -> (glow::VertexArray, glow::Buffer) {
+        let raw_input = utils::slice_as_raw(input);
+        opengl::create_vao_vbo_points(gl, raw_input)
+    }
+}
+
+impl GlDrawable for GlTesselationBicubicPatch {
+    fn draw(&self) {
+        opengl::with_vao(&self.gl, self.vertex_array, || unsafe {
+            self.gl.patch_parameter_i32(glow::PATCH_VERTICES, 16);
+            self.gl.draw_arrays(glow::PATCHES, 0, Self::VERTEX_COUNT);
+            self.gl.polygon_mode(glow::FRONT_AND_BACK, glow::FILL);
+        });
+    }
+}
+
+impl Drop for GlTesselationBicubicPatch {
+    fn drop(&mut self) {
+        unsafe {
+            self.gl.delete_vertex_array(self.vertex_array);
+            self.gl.delete_buffer(self.vertex_buffer);
+        }
+    }
+}

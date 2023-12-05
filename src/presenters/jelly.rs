@@ -4,7 +4,7 @@ use crate::controls::{camera::Camera, mouse::MouseState};
 use crate::numerics::{bezier, ode};
 use crate::render::{
     gl_drawable::GlDrawable,
-    gl_mesh::{GlLineStrip, GlLines, GlPointCloud, GlTriangleMesh},
+    gl_mesh::{GlLineStrip, GlLines, GlPointCloud, GlTesselationBicubicPatch, GlTriangleMesh},
     gl_program::GlProgram,
     mesh::Mesh,
     models,
@@ -19,8 +19,6 @@ use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
-const ROOM_COLOR: na::Vector4<f32> = na::vector![0.8, 0.4, 0.2, 0.4];
-
 const LIGHT_POSITION: na::Vector3<f32> = na::vector![-2.0, 4.0, -2.0];
 const LIGHT_COLOR: na::Vector3<f32> = na::vector![1.0, 1.0, 1.0];
 const LIGHT_AMBIENT: na::Vector3<f32> = na::vector![0.4, 0.4, 0.4];
@@ -33,6 +31,8 @@ struct Room {
 }
 
 impl Room {
+    const COLOR: na::Vector4<f32> = na::vector![0.8, 0.4, 0.2, 0.4];
+
     fn new(gl: Arc<glow::Context>) -> Self {
         Self {
             program: GlProgram::vertex_fragment(Arc::clone(&gl), "perspective_vert", "phong_frag"),
@@ -69,7 +69,7 @@ impl Room {
             .uniform_3_f32_slice("ambient", LIGHT_AMBIENT.as_slice());
 
         self.program
-            .uniform_4_f32_slice("material_color", ROOM_COLOR.as_slice());
+            .uniform_4_f32_slice("material_color", Self::COLOR.as_slice());
         self.program.uniform_f32("material_diffuse", 0.8);
         self.program.uniform_f32("material_specular", 0.4);
         self.program.uniform_f32("material_specular_exp", 10.0);
@@ -171,7 +171,6 @@ struct Model {
 impl Model {
     const MODEL_COLOR: [f32; 4] = [0.1, 0.4, 1.0, 1.0];
     fn new(gl: Arc<glow::Context>) -> Self {
-        let cube = bezier::Cube::new();
         Self {
             program: GlProgram::vertex_fragment(
                 Arc::clone(&gl),
@@ -328,6 +327,93 @@ impl BezierCube {
     }
 }
 
+struct BezierPatches {
+    program: GlProgram,
+    surfaces: [GlTesselationBicubicPatch; 6],
+    show: bool,
+    gl: Arc<glow::Context>,
+}
+
+impl BezierPatches {
+    const SUBDIVISIONS: u32 = 16;
+    const COLOR: [f32; 4] = [1.0, 0.2, 0.2, 1.0];
+
+    fn new(gl: Arc<glow::Context>, cube: &bezier::Cube<f64>) -> Self {
+        Self {
+            program: GlProgram::with_shader_names(
+                Arc::clone(&gl),
+                &[
+                    ("bezier_vert", glow::VERTEX_SHADER),
+                    ("bezier_tsct", glow::TESS_CONTROL_SHADER),
+                    ("bezier_tsev", glow::TESS_EVALUATION_SHADER),
+                    ("phong_frag", glow::FRAGMENT_SHADER),
+                ],
+            ),
+            surfaces: cube
+                .patches_f32()
+                .map(|p| GlTesselationBicubicPatch::new(Arc::clone(&gl), &p)),
+            show: true,
+            gl,
+        }
+    }
+
+    fn draw(&self, aspect_ratio: f32, camera: &Camera) {
+        if !self.show {
+            return;
+        }
+
+        self.program.enable();
+        self.program
+            .uniform_u32("u_subdivisions", Self::SUBDIVISIONS);
+        self.program
+            .uniform_u32("v_subdivisions", Self::SUBDIVISIONS);
+
+        self.program
+            .uniform_matrix_4_f32_slice("view", camera.view_transform().as_slice());
+        self.program.uniform_matrix_4_f32_slice(
+            "projection",
+            camera.projection_transform(aspect_ratio).as_slice(),
+        );
+
+        self.program
+            .uniform_3_f32_slice("eye_position", camera.position().coords.as_slice());
+        self.program
+            .uniform_3_f32_slice("light_position", LIGHT_POSITION.as_slice());
+        self.program
+            .uniform_3_f32_slice("light_color", LIGHT_COLOR.as_slice());
+        self.program
+            .uniform_3_f32_slice("ambient", LIGHT_AMBIENT.as_slice());
+
+        self.program
+            .uniform_4_f32_slice("material_color", Self::COLOR.as_slice());
+        self.program.uniform_f32("material_diffuse", 0.8);
+        self.program.uniform_f32("material_specular", 0.4);
+        self.program.uniform_f32("material_specular_exp", 10.0);
+
+        self.program.uniform_u32("invert_normals", 1);
+        for surface in self.surfaces.iter().take(3) {
+            surface.draw();
+        }
+
+        unsafe { self.gl.cull_face(glow::FRONT) };
+        self.program.uniform_u32("invert_normals", 0);
+        for surface in self.surfaces.iter().skip(3).take(3) {
+            surface.draw();
+        }
+        unsafe { self.gl.cull_face(glow::BACK) };
+    }
+
+    fn ui(&mut self, ui: &mut Ui) {
+        ui.checkbox(&mut self.show, "Show bezier patches");
+    }
+
+    fn update_cube(&mut self, cube: &bezier::Cube<f64>) {
+        self.surfaces = cube
+            .patches_f32()
+            .map(|p| GlTesselationBicubicPatch::new(Arc::clone(&self.gl), &p));
+    }
+}
+
 struct Simulation {
     state: JellyState,
     solver: Box<dyn ode::SolverWithDelta<{ jelly::ODE_DIM }, JellyODE>>,
@@ -348,16 +434,21 @@ impl Simulation {
         }
     }
 
-    fn update(&mut self, cube: &mut BezierCube, delta: std::time::Duration) {
+    fn update(
+        &mut self,
+        cube: &mut BezierCube,
+        patches: &mut BezierPatches,
+        delta: std::time::Duration,
+    ) {
         let elapsed_t = delta.as_secs_f64() * self.simulation_speed;
         self.exact_t += elapsed_t;
 
         while self.exact_t > self.state.t {
-            self.step_update(cube);
+            self.step_update(cube, patches);
         }
     }
 
-    fn step_update(&mut self, cube: &mut BezierCube) {
+    fn step_update(&mut self, cube: &mut BezierCube, patches: &mut BezierPatches) {
         self.state = self.solver.step(&self.state);
 
         for idx in 0..jelly::POINT_COUNT {
@@ -368,6 +459,7 @@ impl Simulation {
         }
 
         cube.update_cube();
+        patches.update_cube(&cube.cube);
     }
 
     fn ui(&mut self, ui: &mut Ui) {
@@ -391,28 +483,27 @@ pub struct Jelly {
     camera: Camera,
 
     bezier_cube: BezierCube,
+    bezier_patches: BezierPatches,
     model: Model,
     room: Room,
     control_frame: ControlFrame,
     simulation: Simulation,
-
-    gl: Arc<glow::Context>,
 }
 
 impl Jelly {
     pub fn new(gl: Arc<glow::Context>) -> Self {
         let control_frame_transform = Rc::new(RefCell::new(jelly::ControlFrameTransform::new()));
+        let bezier_cube = BezierCube::new(Arc::clone(&gl));
 
         Self {
             camera: Camera::new(),
 
-            bezier_cube: BezierCube::new(Arc::clone(&gl)),
+            bezier_patches: BezierPatches::new(Arc::clone(&gl), &bezier_cube.cube),
+            bezier_cube,
             model: Model::new(Arc::clone(&gl)),
             room: Room::new(Arc::clone(&gl)),
             control_frame: ControlFrame::new(Arc::clone(&gl), Rc::clone(&control_frame_transform)),
             simulation: Simulation::new(control_frame_transform),
-
-            gl,
         }
     }
 }
@@ -424,6 +515,7 @@ impl Presenter for Jelly {
         self.control_frame.ui(ui);
         self.room.ui(ui);
         self.simulation.ui(ui);
+        self.bezier_patches.ui(ui);
     }
 
     fn show_bottom_ui(&mut self, ui: &mut Ui) {
@@ -439,10 +531,12 @@ impl Presenter for Jelly {
             .draw(aspect_ratio, &self.camera, &self.bezier_cube.flat_cube);
         self.control_frame.draw(aspect_ratio, &self.camera);
         self.room.draw(aspect_ratio, &self.camera);
+        self.bezier_patches.draw(aspect_ratio, &self.camera);
     }
 
     fn update(&mut self, delta: std::time::Duration) {
-        self.simulation.update(&mut self.bezier_cube, delta);
+        self.simulation
+            .update(&mut self.bezier_cube, &mut self.bezier_patches, delta);
     }
 
     fn update_mouse(&mut self, state: MouseState) {

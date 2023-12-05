@@ -57,4 +57,15 @@ impl Cube<f64> {
     pub fn as_f32_flat(&self) -> [f32; 3 * 64] {
         self.as_flat().map(|c| c as f32)
     }
+
+    pub fn patches_f32(&self) -> [[[na::Point3<f32>; 4]; 4]; 6] {
+        [
+            self.0[3].map(|v| v.map(|w| w.map(|c| c as f32))),
+            self.0[3].map(|v| v.map(|w| w.map(|c| c as f32))),
+            self.0[3].map(|v| v.map(|w| w.map(|c| c as f32))),
+            self.0[0].map(|v| v.map(|w| w.map(|c| c as f32))),
+            self.0[3].map(|v| v.map(|w| w.map(|c| c as f32))),
+            self.0[3].map(|v| v.map(|w| w.map(|c| c as f32))),
+        ]
+    }
 }
