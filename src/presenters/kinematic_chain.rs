@@ -33,14 +33,14 @@ pub struct KinematicChain {
     start: na::Point2<f64>,
     start_arm_mesh: GlLines,
 
-    config_state_current: Option<na::Point2<f64>>,
     current_arm_mesh: GlLines,
+    current_path: Option<Vec<na::Point2<f64>>>,
 
     config_state_end: flat_chain::ReverseSolutions,
     end: na::Point2<f64>,
     end_arm_mesh: GlLines,
 
-    config_obstuction: ConfigObstuction,
+    config_obstruction: ConfigObstuction,
     texture: GlTexture,
     map: BFSMap,
     system: flat_chain::System,
@@ -79,14 +79,14 @@ impl KinematicChain {
             start: Self::ARM_ORIGIN + na::vector![200.0, 0.0],
             start_arm_mesh: GlLines::new(Arc::clone(&gl), &[na::Point::origin(); 8]),
 
-            config_state_current: Some(na::Point2::origin()),
+            current_path: None,
             current_arm_mesh: GlLines::new(Arc::clone(&gl), &[na::Point::origin(); 8]),
 
             config_state_end: flat_chain::ReverseSolutions::One(na::Point2::origin()),
             end: Self::ARM_ORIGIN + na::vector![200.0, 0.0],
             end_arm_mesh: GlLines::new(Arc::clone(&gl), &[na::Point::origin(); 8]),
 
-            config_obstuction,
+            config_obstruction: config_obstuction,
             texture: GlTexture::new(Arc::clone(&gl), &texture),
             map,
             system,
@@ -94,7 +94,7 @@ impl KinematicChain {
             start_with_second: false,
             end_with_second: false,
 
-            simulation_speed: 1.0,
+            simulation_speed: 100.0,
             animation_progress: 0.0,
 
             gl,
@@ -108,7 +108,7 @@ impl KinematicChain {
     fn update_obstruction_texture(&mut self) {
         self.texture = GlTexture::new(
             Arc::clone(&self.gl),
-            &self.config_obstuction.texture(&self.map),
+            &self.config_obstruction.texture(&self.map),
         );
     }
 
@@ -160,6 +160,17 @@ impl KinematicChain {
         ]
     }
 
+    fn reset_obstruction(&mut self) {
+        self.config_obstruction = ConfigObstuction::new(self.system, Self::ARM_ORIGIN);
+
+        for rect in &self.rects {
+            self.config_obstruction.add_rect(rect);
+        }
+
+        self.update_map();
+        self.update_obstruction_texture();
+    }
+
     fn draw_arm(&self, size: Option<PhysicalSize<u32>>) {
         let Some(size) = size else { return };
 
@@ -170,7 +181,11 @@ impl KinematicChain {
             .uniform_matrix_4_f32_slice("model_transform", na::Matrix4::identity().as_slice());
 
         self.start_arm_mesh.draw();
-        self.current_arm_mesh.draw();
+
+        if self.current_path.is_some() {
+            self.current_arm_mesh.draw();
+        }
+
         self.end_arm_mesh.draw();
     }
 
@@ -245,7 +260,20 @@ impl KinematicChain {
             flat_chain::ReverseSolutions::None => None,
         };
 
-        self.map = BFSMap::from_obstructions(&start, &self.config_obstuction);
+        self.map = BFSMap::from_obstructions(&start, &self.config_obstruction);
+        self.update_path();
+    }
+
+    fn update_path(&mut self) {
+        self.animation_progress = 0.0;
+        self.current_path = match self.config_state_end {
+            flat_chain::ReverseSolutions::InfinitelyMany => todo!(),
+            flat_chain::ReverseSolutions::Two(t_1, t_2) => self
+                .map
+                .path_to(if self.end_with_second { &t_2 } else { &t_1 }),
+            flat_chain::ReverseSolutions::One(target) => self.map.path_to(&target),
+            flat_chain::ReverseSolutions::None => None,
+        }
     }
 
     fn handle_rect_setting(&mut self, state: &MouseState) {
@@ -267,7 +295,7 @@ impl KinematicChain {
             }
         } else {
             if let DrawingRectState::Drawing(rect) = &self.drawing_rect {
-                self.config_obstuction.add_rect(rect);
+                self.config_obstruction.add_rect(rect);
                 self.rects.push(*rect);
                 self.drawing_rect = DrawingRectState::NotDrawing;
                 self.update_map();
@@ -299,14 +327,24 @@ impl KinematicChain {
                 .system
                 .inverse_kinematics(&(self.end - Self::ARM_ORIGIN).into());
 
+            self.update_path();
             self.update_arm_mesh();
         }
+    }
+
+    fn update_current_mesh(&mut self, frame: usize) {
+        let Some(path) = &self.current_path else {
+            return;
+        };
+
+        self.current_arm_mesh
+            .update_points(&self.state_to_points(&path[frame]));
     }
 }
 
 impl Presenter for KinematicChain {
     fn show_side_ui(&mut self, ui: &mut Ui) {
-        ui.add(DragValue::new(&mut self.simulation_speed).clamp_range(0.0..=100.0));
+        ui.add(DragValue::new(&mut self.simulation_speed).clamp_range(0.0..=1000.0));
         ui.label(format!(
             "Animation progress: {:.2}",
             self.animation_progress
@@ -321,10 +359,14 @@ impl Presenter for KinematicChain {
             self.update_obstruction_texture();
         }
 
-        if (ui.add(DragValue::new(&mut self.system.l_1).clamp_range(0.0..=300.0))
+        if (ui.label("l_1")
+            | ui.add(DragValue::new(&mut self.system.l_1).clamp_range(0.0..=300.0))
+            | ui.label("l_2")
             | ui.add(DragValue::new(&mut self.system.l_2).clamp_range(0.0..=300.0)))
         .changed()
         {
+            self.reset_obstruction();
+
             self.config_state_start = self
                 .system
                 .inverse_kinematics(&(self.start - Self::ARM_ORIGIN).into());
@@ -333,8 +375,6 @@ impl Presenter for KinematicChain {
                 .inverse_kinematics(&(self.end - Self::ARM_ORIGIN).into());
 
             self.update_arm_mesh();
-            self.update_map();
-            self.update_obstruction_texture();
         }
 
         ui.label("Rects");
@@ -359,8 +399,18 @@ impl Presenter for KinematicChain {
     }
 
     fn update(&mut self, delta: std::time::Duration) {
-        self.animation_progress =
-            (self.animation_progress + delta.as_secs_f64() * self.simulation_speed).rem_euclid(1.0);
+        let Some(path) = &self.current_path else {
+            return;
+        };
+
+        let animation_progress_old = self.animation_progress;
+        self.animation_progress = (self.animation_progress
+            + delta.as_secs_f64() * self.simulation_speed)
+            .rem_euclid(path.len() as f64);
+
+        if animation_progress_old.floor() != self.animation_progress.floor() {
+            self.update_current_mesh(self.animation_progress.floor() as usize);
+        }
     }
 
     fn update_mouse(&mut self, state: MouseState) {

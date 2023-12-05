@@ -81,7 +81,8 @@ impl BFSMap {
     }
 
     pub fn path_to(&self, target: &na::Point2<f64>) -> Option<Vec<na::Point2<f64>>> {
-        let mut current = self.0[target.x.floor() as usize][target.y.floor() as usize]?;
+        let mut current = self.0[target.x.to_degrees().rem_euclid(360.0).floor() as usize]
+            [target.y.to_degrees().rem_euclid(360.0).floor() as usize]?;
         let mut path = vec![*target];
 
         while let Some(prev) = current.previous {

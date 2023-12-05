@@ -14,6 +14,7 @@ use crate::ui::widgets::vector_drag;
 use egui::{DragValue, Ui};
 use glow::HasContext;
 use nalgebra as na;
+use rand::Rng;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -390,13 +391,13 @@ impl BezierPatches {
         self.program.uniform_f32("material_specular", 0.4);
         self.program.uniform_f32("material_specular_exp", 10.0);
 
-        self.program.uniform_u32("invert_normals", 1);
+        self.program.uniform_u32("invert_normals", 0);
         for surface in self.surfaces.iter().take(3) {
             surface.draw();
         }
 
         unsafe { self.gl.cull_face(glow::FRONT) };
-        self.program.uniform_u32("invert_normals", 0);
+        self.program.uniform_u32("invert_normals", 1);
         for surface in self.surfaces.iter().skip(3).take(3) {
             surface.draw();
         }
@@ -417,6 +418,7 @@ impl BezierPatches {
 struct Simulation {
     state: JellyState,
     solver: Box<dyn ode::SolverWithDelta<{ jelly::ODE_DIM }, JellyODE>>,
+    disruption_strength: f64,
     simulation_speed: f64,
     exact_t: f64,
 }
@@ -429,6 +431,7 @@ impl Simulation {
                 0.01,
                 JellyODE::new(control_frame_transform),
             )),
+            disruption_strength: 1.0,
             simulation_speed: 1.0,
             exact_t: 0.0,
         }
@@ -462,6 +465,19 @@ impl Simulation {
         patches.update_cube(&cube.cube);
     }
 
+    fn apply_random_disruption(&mut self) {
+        let mut rng = rand::thread_rng();
+        for y in self
+            .state
+            .y
+            .iter_mut()
+            .skip(jelly::SPACE_DIM)
+            .take(jelly::ODE_DIM)
+        {
+            *y += (rng.gen::<f64>() * 2.0 - 1.0) * self.disruption_strength;
+        }
+    }
+
     fn ui(&mut self, ui: &mut Ui) {
         ui.label("Simulation speed");
         ui.add(
@@ -475,6 +491,52 @@ impl Simulation {
             DragValue::new(self.solver.delta_mut())
                 .clamp_range(0.001..=f64::MAX)
                 .speed(0.001),
+        );
+
+        ui.label("Disruption force");
+        ui.add(
+            DragValue::new(&mut self.disruption_strength)
+                .clamp_range(0.0..=f64::MAX)
+                .speed(0.25),
+        );
+
+        if ui.button("Random disruption").clicked() {
+            self.apply_random_disruption();
+        }
+
+        ui.label("Point mass");
+        let mut point_mass = self.solver.ode().point_mass();
+
+        if ui
+            .add(
+                DragValue::new(&mut point_mass)
+                    .clamp_range(0.01..=100.0)
+                    .speed(0.25),
+            )
+            .changed()
+        {
+            self.solver.ode_mut().set_point_mass(point_mass);
+        }
+
+        ui.label("Mass connection spring constant");
+        ui.add(
+            DragValue::new(&mut self.solver.ode_mut().inner_spring_constant)
+                .clamp_range(0.01..=100.0)
+                .speed(0.05),
+        );
+
+        ui.label("Mass-frame connection spring constant");
+        ui.add(
+            DragValue::new(&mut self.solver.ode_mut().corner_spring_constant)
+                .clamp_range(0.01..=100.0)
+                .speed(0.05),
+        );
+
+        ui.label("Damping factor");
+        ui.add(
+            DragValue::new(&mut self.solver.ode_mut().damping_factor)
+                .clamp_range(0.0..=100.0)
+                .speed(0.05),
         );
     }
 }
@@ -512,10 +574,12 @@ impl Presenter for Jelly {
     fn show_side_ui(&mut self, ui: &mut Ui) {
         self.bezier_cube.ui(ui);
         self.model.ui(ui);
-        self.control_frame.ui(ui);
-        self.room.ui(ui);
-        self.simulation.ui(ui);
         self.bezier_patches.ui(ui);
+        self.room.ui(ui);
+        ui.separator();
+        self.control_frame.ui(ui);
+        ui.separator();
+        self.simulation.ui(ui);
     }
 
     fn show_bottom_ui(&mut self, ui: &mut Ui) {
@@ -529,9 +593,9 @@ impl Presenter for Jelly {
         self.bezier_cube.draw(aspect_ratio, &self.camera);
         self.model
             .draw(aspect_ratio, &self.camera, &self.bezier_cube.flat_cube);
+        self.bezier_patches.draw(aspect_ratio, &self.camera);
         self.control_frame.draw(aspect_ratio, &self.camera);
         self.room.draw(aspect_ratio, &self.camera);
-        self.bezier_patches.draw(aspect_ratio, &self.camera);
     }
 
     fn update(&mut self, delta: std::time::Duration) {

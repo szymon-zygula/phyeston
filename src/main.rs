@@ -20,8 +20,8 @@ fn main() {
     egui_extras::install_image_loaders(&mut egui_glow.egui_ctx);
 
     let mut builders: Vec<Box<dyn PresenterBuilder>> = vec![
-        Box::new(KinematicChainBuilder::new()),
         Box::new(JellyBuilder::new()),
+        Box::new(KinematicChainBuilder::new()),
         Box::new(QuaternionsBuilder::new()),
         Box::new(SpinningTopBuilder::new()),
         Box::new(SpringBuilder::new()),

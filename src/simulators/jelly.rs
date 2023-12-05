@@ -4,7 +4,6 @@ use crate::numerics::{
 };
 use itertools::Itertools;
 use nalgebra as na;
-use std::array;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -33,7 +32,8 @@ impl ControlFrameTransform {
     }
 }
 pub struct JellyODE {
-    pub masses: [[[f64; 4]; 4]; 4],
+    point_mass_inverse: f64,
+    point_mass: f64,
     pub corner_spring_constant: f64,
     pub inner_spring_constant: f64,
     pub damping_factor: f64,
@@ -42,15 +42,23 @@ pub struct JellyODE {
 
 impl JellyODE {
     pub fn new(control_frame: Rc<RefCell<ControlFrameTransform>>) -> Self {
-        let masses = array::from_fn(|_| array::from_fn(|_| array::from_fn(|_| 1.0)));
-
         Self {
-            masses,
+            point_mass: 1.0,
+            point_mass_inverse: 1.0,
             corner_spring_constant: 10.0,
             inner_spring_constant: 3.0,
             damping_factor: 1.0,
             control_frame,
         }
+    }
+
+    pub fn set_point_mass(&mut self, mass: f64) {
+        self.point_mass = mass;
+        self.point_mass_inverse = 1.0 / mass;
+    }
+
+    pub fn point_mass(&self) -> f64 {
+        self.point_mass
     }
 
     pub fn default_state() -> JellyState {
@@ -207,7 +215,8 @@ impl JellyODE {
                 .cartesian_product(0..4)
                 .cartesian_product(0..4)
                 .flat_map(|((u, v), w)| {
-                    let force = self.force(frame_transform, state, u, v, w) * self.masses[u][v][w];
+                    let force =
+                        self.force(frame_transform, state, u, v, w) * self.point_mass_inverse;
                     [force.x, force.y, force.z]
                 }),
         )
