@@ -27,6 +27,7 @@ fn main() {
         Box::new(SpringBuilder::new()),
     ];
 
+
     let mut presenters: Vec<Box<dyn Presenter>> = builders
         .iter()
         .map(|builder| builder.build(window.clone_gl()))

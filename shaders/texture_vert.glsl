@@ -10,5 +10,5 @@ uniform mat4 view_transform;
 void main() {
     vec4 pos = model_transform * vec4(position, 1.0f);
     gl_Position = view_transform * pos;
-    tex = pos.xy;
+    tex = (position.xy + vec2(0.25)) * 2.0;
 }
