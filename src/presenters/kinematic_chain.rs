@@ -61,7 +61,7 @@ impl KinematicChain {
         let system = flat_chain::System::new(100.0, 100.0);
         let config_obstuction = ConfigObstuction::new(system, Self::ARM_ORIGIN);
         let map = BFSMap::from_obstructions(&Some(na::point![0.0, 0.0]), &config_obstuction);
-        let texture = config_obstuction.texture(&map);
+        let texture = config_obstuction.texture(&map, None);
 
         let mut me = Self {
             rect_program: GlProgram::vertex_fragment(Arc::clone(&gl), "2d_vert", "pass_frag"),
@@ -80,7 +80,7 @@ impl KinematicChain {
             start_arm_mesh: GlLines::new(Arc::clone(&gl), &[na::Point::origin(); 8]),
 
             current_path: None,
-            current_arm_mesh: GlLines::new(Arc::clone(&gl), &[na::Point::origin(); 8]),
+            current_arm_mesh: GlLines::new(Arc::clone(&gl), &[na::Point::origin(); 4]),
 
             config_state_end: flat_chain::ReverseSolutions::One(na::Point2::origin()),
             end: Self::ARM_ORIGIN + na::vector![200.0, 0.0],
@@ -105,33 +105,51 @@ impl KinematicChain {
         me
     }
 
+    fn reset_all(&mut self) {
+        self.config_state_start = self.config_obstruction.correct_solution(
+            &self
+                .system
+                .inverse_kinematics(&(self.start - Self::ARM_ORIGIN).into()),
+        );
+        self.config_state_end = self.config_obstruction.correct_solution(
+            &self
+                .system
+                .inverse_kinematics(&(self.end - Self::ARM_ORIGIN).into()),
+        );
+
+        self.update_map();
+        self.update_arm_mesh();
+    }
+
     fn update_obstruction_texture(&mut self) {
         self.texture = GlTexture::new(
             Arc::clone(&self.gl),
-            &self.config_obstruction.texture(&self.map),
+            &self
+                .config_obstruction
+                .texture(&self.map, self.current_path.as_ref().map(|v| v.as_slice())),
         );
     }
 
     fn update_arm_mesh(&mut self) {
         self.start_arm_mesh
-            .update_points(&self.arm_points(&self.config_state_start, self.start_with_second));
+            .update_points(&self.arm_points(&self.config_state_start));
         self.end_arm_mesh
-            .update_points(&self.arm_points(&self.config_state_end, self.end_with_second));
+            .update_points(&self.arm_points(&self.config_state_end));
     }
 
-    fn arm_points(
-        &self,
-        config: &flat_chain::ReverseSolutions,
-        use_second: bool,
-    ) -> Vec<na::Point3<f32>> {
+    fn arm_points(&self, config: &flat_chain::ReverseSolutions) -> Vec<na::Point3<f32>> {
         let origin = na::point![Self::ARM_ORIGIN.x as f32, Self::ARM_ORIGIN.y as f32, 0.0];
         match config {
-            flat_chain::ReverseSolutions::Two(state_1, state_2) => self
-                .state_to_points(if use_second { &state_2 } else { &state_1 })
-                .into(),
-            flat_chain::ReverseSolutions::One(state) => self.state_to_points(&state).into(),
-            flat_chain::ReverseSolutions::None => vec![origin; 4],
-            flat_chain::ReverseSolutions::InfinitelyMany => vec![origin; 4],
+            flat_chain::ReverseSolutions::Two(state_1, state_2) => [
+                self.state_to_points(&state_1),
+                self.state_to_points(&state_2),
+            ]
+            .concat(),
+            flat_chain::ReverseSolutions::One(state) => {
+                [[origin; 4], self.state_to_points(&state)].concat()
+            }
+            flat_chain::ReverseSolutions::None => vec![origin; 8],
+            flat_chain::ReverseSolutions::InfinitelyMany => vec![origin; 8],
         }
     }
 
@@ -168,7 +186,6 @@ impl KinematicChain {
         }
 
         self.update_map();
-        self.update_obstruction_texture();
     }
 
     fn draw_arm(&self, size: Option<PhysicalSize<u32>>) {
@@ -180,13 +197,23 @@ impl KinematicChain {
         self.rect_program
             .uniform_matrix_4_f32_slice("model_transform", na::Matrix4::identity().as_slice());
 
-        self.start_arm_mesh.draw();
+        match self.config_state_start {
+            flat_chain::ReverseSolutions::Two(_, _) | flat_chain::ReverseSolutions::One(_) => {
+                self.start_arm_mesh.draw();
+            }
+            flat_chain::ReverseSolutions::None | flat_chain::ReverseSolutions::InfinitelyMany => {}
+        }
 
         if self.current_path.is_some() {
             self.current_arm_mesh.draw();
         }
 
-        self.end_arm_mesh.draw();
+        match self.config_state_end {
+            flat_chain::ReverseSolutions::Two(_, _) | flat_chain::ReverseSolutions::One(_) => {
+                self.end_arm_mesh.draw();
+            }
+            flat_chain::ReverseSolutions::None | flat_chain::ReverseSolutions::InfinitelyMany => {}
+        }
     }
 
     fn draw_texture(&self, size: Option<PhysicalSize<u32>>) {
@@ -250,7 +277,7 @@ impl KinematicChain {
 
     fn update_map(&mut self) {
         let start = match self.config_state_start {
-            flat_chain::ReverseSolutions::InfinitelyMany => todo!(),
+            flat_chain::ReverseSolutions::InfinitelyMany => None,
             flat_chain::ReverseSolutions::Two(first, second) => Some(if self.start_with_second {
                 second
             } else {
@@ -261,13 +288,15 @@ impl KinematicChain {
         };
 
         self.map = BFSMap::from_obstructions(&start, &self.config_obstruction);
+
         self.update_path();
+        self.update_obstruction_texture();
     }
 
     fn update_path(&mut self) {
         self.animation_progress = 0.0;
         self.current_path = match self.config_state_end {
-            flat_chain::ReverseSolutions::InfinitelyMany => todo!(),
+            flat_chain::ReverseSolutions::InfinitelyMany => None,
             flat_chain::ReverseSolutions::Two(t_1, t_2) => self
                 .map
                 .path_to(if self.end_with_second { &t_2 } else { &t_1 }),
@@ -298,8 +327,7 @@ impl KinematicChain {
                 self.config_obstruction.add_rect(rect);
                 self.rects.push(*rect);
                 self.drawing_rect = DrawingRectState::NotDrawing;
-                self.update_map();
-                self.update_obstruction_texture();
+                self.reset_all();
             }
         }
     }
@@ -311,24 +339,22 @@ impl KinematicChain {
 
         if state.is_left_button_down() {
             self.start = na::point![position.x, position.y];
-            self.config_state_start = self
-                .system
-                .inverse_kinematics(&(self.start - Self::ARM_ORIGIN).into());
-            self.update_map();
-
-            self.update_obstruction_texture();
-
-            self.update_arm_mesh();
+            self.config_state_start = self.config_obstruction.correct_solution(
+                &self
+                    .system
+                    .inverse_kinematics(&(self.start - Self::ARM_ORIGIN).into()),
+            );
+            self.reset_all();
         }
 
         if state.is_right_button_down() {
             self.end = na::point![position.x, position.y];
-            self.config_state_end = self
-                .system
-                .inverse_kinematics(&(self.end - Self::ARM_ORIGIN).into());
-
-            self.update_path();
-            self.update_arm_mesh();
+            self.config_state_end = self.config_obstruction.correct_solution(
+                &self
+                    .system
+                    .inverse_kinematics(&(self.end - Self::ARM_ORIGIN).into()),
+            );
+            self.reset_all();
         }
     }
 
@@ -350,13 +376,30 @@ impl Presenter for KinematicChain {
             self.animation_progress
         ));
 
-        if (ui.checkbox(&mut self.start_with_second, "Start with second solution")
-            | ui.checkbox(&mut self.end_with_second, "End with second solution"))
-        .changed()
-        {
-            self.update_arm_mesh();
-            self.update_map();
-            self.update_obstruction_texture();
+        let mut reset = false;
+
+        reset |= ui
+            .add_enabled(
+                matches!(
+                    self.config_state_start,
+                    flat_chain::ReverseSolutions::Two(_, _)
+                ),
+                egui::Checkbox::new(&mut self.start_with_second, "Start with second solution"),
+            )
+            .changed();
+
+        reset |= ui
+            .add_enabled(
+                matches!(
+                    self.config_state_end,
+                    flat_chain::ReverseSolutions::Two(_, _)
+                ),
+                egui::Checkbox::new(&mut self.end_with_second, "End with second solution"),
+            )
+            .changed();
+
+        if reset {
+            self.reset_all();
         }
 
         if (ui.label("l_1")
@@ -374,16 +417,57 @@ impl Presenter for KinematicChain {
                 .system
                 .inverse_kinematics(&(self.end - Self::ARM_ORIGIN).into());
 
-            self.update_arm_mesh();
+            self.reset_all();
         }
 
         ui.label("Rects");
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for rect in &self.rects {
-                ui.label(format!(
-                    "{:.3}x{:.3}, {:.3}x{:.3}",
-                    rect.p_1.x, rect.p_1.y, rect.p_2.x, rect.p_2.y
-                ));
+            let mut change = false;
+            self.rects.retain_mut(|rect| {
+                ui.horizontal(|ui| {
+                    ui.horizontal(|ui| {
+                        change |= ui
+                            .add(
+                                DragValue::new(&mut rect.p_1.x)
+                                    .speed(1.0)
+                                    .clamp_range(0.0..=2000.0),
+                            )
+                            .changed();
+                        ui.label("x");
+                        change |= ui
+                            .add(
+                                DragValue::new(&mut rect.p_1.y)
+                                    .speed(1.0)
+                                    .clamp_range(0.0..=2000.0),
+                            )
+                            .changed();
+                        ui.label(",");
+                        change |= ui
+                            .add(
+                                DragValue::new(&mut rect.p_2.x)
+                                    .speed(1.0)
+                                    .clamp_range(0.0..=2000.0),
+                            )
+                            .changed();
+                        ui.label("x");
+                        change |= ui
+                            .add(
+                                DragValue::new(&mut rect.p_2.y)
+                                    .speed(1.0)
+                                    .clamp_range(0.0..=2000.0),
+                            )
+                            .changed();
+                    });
+
+                    let stays = !ui.button("X").clicked();
+                    change |= !stays;
+                    stays
+                })
+                .inner
+            });
+
+            if change {
+                self.reset_obstruction();
             }
         });
     }

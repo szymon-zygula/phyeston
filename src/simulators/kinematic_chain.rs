@@ -1,7 +1,6 @@
 use crate::numerics::{kinematics::flat_chain, Rect, Segment};
 use crate::render::texture::Texture;
 use image::Rgba;
-use itertools::Itertools;
 use std::collections::VecDeque;
 
 use nalgebra as na;
@@ -114,6 +113,49 @@ impl ConfigObstuction {
         }
     }
 
+    pub fn correct_solution(
+        &self,
+        solution: &flat_chain::ReverseSolutions,
+    ) -> flat_chain::ReverseSolutions {
+        match solution {
+            flat_chain::ReverseSolutions::InfinitelyMany => flat_chain::ReverseSolutions::None,
+            flat_chain::ReverseSolutions::Two(s1, s2) => {
+                if self.obstructed
+                    [s1.x.to_degrees().rem_euclid(CONFIG_SIZE as f64).floor() as usize]
+                    [s1.y.to_degrees().rem_euclid(CONFIG_SIZE as f64).floor() as usize]
+                {
+                    if self.obstructed
+                        [s2.x.to_degrees().rem_euclid(CONFIG_SIZE as f64).floor() as usize]
+                        [s2.y.to_degrees().rem_euclid(CONFIG_SIZE as f64).floor() as usize]
+                    {
+                        flat_chain::ReverseSolutions::None
+                    } else {
+                        flat_chain::ReverseSolutions::One(*s2)
+                    }
+                } else {
+                    if self.obstructed
+                        [s2.x.to_degrees().rem_euclid(CONFIG_SIZE as f64).floor() as usize]
+                        [s2.y.to_degrees().rem_euclid(CONFIG_SIZE as f64).floor() as usize]
+                    {
+                        flat_chain::ReverseSolutions::One(*s1)
+                    } else {
+                        flat_chain::ReverseSolutions::Two(*s1, *s2)
+                    }
+                }
+            }
+            flat_chain::ReverseSolutions::One(s) => {
+                if self.obstructed[s.x.to_degrees().rem_euclid(CONFIG_SIZE as f64).floor() as usize]
+                    [s.y.to_degrees().rem_euclid(CONFIG_SIZE as f64).floor() as usize]
+                {
+                    flat_chain::ReverseSolutions::None
+                } else {
+                    flat_chain::ReverseSolutions::One(*s)
+                }
+            }
+            flat_chain::ReverseSolutions::None => flat_chain::ReverseSolutions::None,
+        }
+    }
+
     pub fn add_rect(&mut self, rect: &Rect) {
         for (alpha_1, subarray) in self.obstructed.iter_mut().enumerate() {
             for (alpha_2, obstruction) in subarray.iter_mut().enumerate() {
@@ -135,7 +177,7 @@ impl ConfigObstuction {
         }
     }
 
-    pub fn texture(&self, access_map: &BFSMap) -> Texture {
+    pub fn texture(&self, access_map: &BFSMap, path: Option<&[na::Point2<f64>]>) -> Texture {
         let mut texture = Texture::new_rgb(CONFIG_SIZE as u32, CONFIG_SIZE as u32);
 
         for (alpha_1, subarray) in self.obstructed.iter().enumerate() {
@@ -152,6 +194,14 @@ impl ConfigObstuction {
                     ]),
                 );
             }
+        }
+
+        for step in path.unwrap_or(&[]) {
+            texture.put(
+                step.x.to_degrees().rem_euclid(CONFIG_SIZE as f64).floor() as u32,
+                step.y.to_degrees().rem_euclid(CONFIG_SIZE as f64).floor() as u32,
+                Rgba([255, 0, 0, 255]),
+            );
         }
 
         texture
