@@ -38,7 +38,12 @@ impl Room {
         Self {
             program: GlProgram::vertex_fragment(Arc::clone(&gl), "perspective_vert", "phong_frag"),
             mesh: GlTriangleMesh::new(Arc::clone(&gl), &models::inverse_cube()),
-            transform: na::Scale3::new(5.0, 5.0, 5.0).to_homogeneous(),
+            transform: na::Scale3::new(
+                jelly::ROOM_HALF_SIZE as f32,
+                jelly::ROOM_HALF_SIZE as f32,
+                jelly::ROOM_HALF_SIZE as f32,
+            )
+            .to_homogeneous(),
             show: true,
         }
     }
@@ -452,7 +457,10 @@ impl Simulation {
     }
 
     fn step_update(&mut self, cube: &mut BezierCube, patches: &mut BezierPatches) {
-        self.state = self.solver.step(&self.state);
+        self.state = self
+            .solver
+            .ode()
+            .apply_collisions(self.solver.step(&self.state));
 
         for idx in 0..jelly::POINT_COUNT {
             let point = cube.cube.flat_mut(idx);
@@ -517,6 +525,13 @@ impl Simulation {
         {
             self.solver.ode_mut().set_point_mass(point_mass);
         }
+
+        ui.label("Elasticity coefficient");
+        ui.add(
+            DragValue::new(&mut self.solver.ode_mut().elasticity_coefficient)
+                .clamp_range(0.0..=1.0)
+                .speed(0.01),
+        );
 
         ui.label("Mass connection spring constant");
         ui.add(

@@ -10,6 +10,7 @@ use std::rc::Rc;
 pub const POINT_COUNT: usize = 64;
 pub const SPACE_DIM: usize = POINT_COUNT * 3;
 pub const ODE_DIM: usize = SPACE_DIM * 2;
+pub const ROOM_HALF_SIZE: f64 = 5.0;
 
 pub type JellyState = State<ODE_DIM>;
 
@@ -37,16 +38,20 @@ pub struct JellyODE {
     pub corner_spring_constant: f64,
     pub inner_spring_constant: f64,
     pub damping_factor: f64,
+    pub elasticity_coefficient: f64,
     control_frame: Rc<RefCell<ControlFrameTransform>>,
 }
 
 impl JellyODE {
+    const MAX_COLLISIONS: usize = 100;
+
     pub fn new(control_frame: Rc<RefCell<ControlFrameTransform>>) -> Self {
         Self {
             point_mass: 1.0,
             point_mass_inverse: 1.0,
             corner_spring_constant: 10.0,
             inner_spring_constant: 3.0,
+            elasticity_coefficient: 0.1,
             damping_factor: 1.0,
             control_frame,
         }
@@ -220,6 +225,63 @@ impl JellyODE {
                     [force.x, force.y, force.z]
                 }),
         )
+    }
+
+    fn collide_position_coordinate(&self, c: &mut f64, vc: &mut f64) -> bool {
+        if *c < -ROOM_HALF_SIZE {
+            *c = -(*c + ROOM_HALF_SIZE) - ROOM_HALF_SIZE;
+            *vc = -*vc;
+            true
+        } else if *c > ROOM_HALF_SIZE {
+            *c = -(*c - ROOM_HALF_SIZE) + ROOM_HALF_SIZE;
+            *vc = -*vc;
+            true
+        } else {
+            false
+        }
+    }
+
+    // True on collision
+    fn collide(&self, position: &mut na::Point3<f64>, velocity: &mut na::Vector3<f64>) -> bool {
+        let collision = self.collide_position_coordinate(&mut position.x, &mut velocity.x)
+            || self.collide_position_coordinate(&mut position.y, &mut velocity.y)
+            || self.collide_position_coordinate(&mut position.z, &mut velocity.z);
+
+        if collision {
+            velocity.x = velocity.x * self.elasticity_coefficient;
+            velocity.y = velocity.y * self.elasticity_coefficient;
+            velocity.z = velocity.z * self.elasticity_coefficient;
+        }
+
+        collision
+    }
+
+    pub fn apply_collisions(&self, mut state: JellyState) -> JellyState {
+        for i in (0..SPACE_DIM).step_by(3) {
+            for _ in 0..Self::MAX_COLLISIONS {
+                let mut position = na::point![state.y[i + 0], state.y[i + 1], state.y[i + 2]];
+                let mut velocity = na::vector![
+                    state.y[i + SPACE_DIM + 0],
+                    state.y[i + SPACE_DIM + 1],
+                    state.y[i + SPACE_DIM + 2]
+                ];
+
+                let collided = self.collide(&mut position, &mut velocity);
+                if collided {
+                    state.y[i + 0] = position.x;
+                    state.y[i + 1] = position.y;
+                    state.y[i + 2] = position.z;
+
+                    state.y[i + SPACE_DIM + 0] = velocity.x;
+                    state.y[i + SPACE_DIM + 1] = velocity.y;
+                    state.y[i + SPACE_DIM + 2] = velocity.z;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        state
     }
 }
 
