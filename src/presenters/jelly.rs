@@ -536,14 +536,14 @@ impl Simulation {
         ui.label("Mass connection spring constant");
         ui.add(
             DragValue::new(&mut self.solver.ode_mut().inner_spring_constant)
-                .clamp_range(0.01..=100.0)
+                .clamp_range(0.00..=100.0)
                 .speed(0.05),
         );
 
         ui.label("Mass-frame connection spring constant");
         ui.add(
             DragValue::new(&mut self.solver.ode_mut().corner_spring_constant)
-                .clamp_range(0.01..=100.0)
+                .clamp_range(0.00..=100.0)
                 .speed(0.05),
         );
 
