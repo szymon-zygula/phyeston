@@ -3,7 +3,7 @@ use egui_winit::winit::{self, platform::run_return::EventLoopExtRunReturn};
 use phyesthon::{
     controls::mouse::MouseState,
     presenters::{
-        jelly::JellyBuilder, kinematic_chain::KinematicChainBuilder,
+        jelly::JellyBuilder, kinematic_chain::KinematicChainBuilder, puma::PumaBuilder,
         quaternions::QuaternionsBuilder, spinning_top::SpinningTopBuilder, spring::SpringBuilder,
         Presenter, PresenterBuilder,
     },
@@ -20,13 +20,13 @@ fn main() {
     egui_extras::install_image_loaders(&mut egui_glow.egui_ctx);
 
     let mut builders: Vec<Box<dyn PresenterBuilder>> = vec![
+        Box::new(PumaBuilder::new()),
         Box::new(JellyBuilder::new()),
         Box::new(KinematicChainBuilder::new()),
         Box::new(QuaternionsBuilder::new()),
         Box::new(SpinningTopBuilder::new()),
         Box::new(SpringBuilder::new()),
     ];
-
 
     let mut presenters: Vec<Box<dyn Presenter>> = builders
         .iter()

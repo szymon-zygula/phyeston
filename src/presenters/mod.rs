@@ -3,11 +3,12 @@ use egui_winit::winit::dpi::PhysicalSize;
 use std::time::Duration;
 
 pub mod jelly;
+pub mod kinematic_chain;
 pub mod parametrizable_function;
+pub mod puma;
 pub mod quaternions;
 pub mod spinning_top;
 pub mod spring;
-pub mod kinematic_chain;
 
 pub trait Presenter {
     fn show_bottom_ui(&mut self, ui: &mut egui::Ui);
