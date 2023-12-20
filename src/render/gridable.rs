@@ -1,4 +1,4 @@
-use super::mesh::ClassicVertex;
+use super::mesh::{ClassicVertex, Triangle};
 use crate::numerics::parametric::ParametricForm;
 use nalgebra as na;
 
@@ -37,4 +37,8 @@ impl<T: ParametricForm<2, 3>> Gridable for T {
 
         (points, indices)
     }
+}
+
+pub trait Triangable {
+    fn triangulation(&self, points_x: u32, points_y: u32) -> (Vec<ClassicVertex>, Vec<Triangle>);
 }

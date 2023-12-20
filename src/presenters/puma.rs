@@ -1,10 +1,10 @@
 use super::{Presenter, PresenterBuilder};
 use crate::{
     controls::{camera::Camera, mouse::MouseState},
-    numerics::rotations::*,
+    numerics::{cylinder::Cylinder, rotations::*},
     render::{
         drawbuffer::Drawbuffer, gl_drawable::GlDrawable, gl_mesh::GlTriangleMesh,
-        gl_program::GlProgram, models,
+        gl_program::GlProgram, gridable::Triangable, mesh::Mesh, models,
     },
     ui::widgets,
 };
@@ -14,6 +14,72 @@ use na::SimdPartialOrd;
 use nalgebra as na;
 use std::cell::RefCell;
 use std::sync::Arc;
+
+struct PumaModel {
+    program: GlProgram,
+    mesh: GlTriangleMesh,
+    bone_transforms: Vec<na::Matrix4<f32>>,
+    joint_transforms: Vec<na::Matrix4<f32>>,
+}
+
+const LIGHT_POSITION: na::Vector3<f32> = na::vector![2.0, 4.0, 2.0];
+const LIGHT_COLOR: na::Vector3<f32> = na::vector![2.0, 2.0, 2.0];
+const LIGHT_AMBIENT: na::Vector3<f32> = na::vector![0.4, 0.4, 0.4];
+
+impl PumaModel {
+    fn new(gl: Arc<glow::Context>) -> Self {
+        let (vertices, triangles) = Cylinder::new(1.0, 1.0).triangulation(50, 50);
+
+        Self {
+            program: GlProgram::vertex_fragment(Arc::clone(&gl), "perspective_vert", "phong_frag"),
+            bone_transforms: vec![na::Matrix4::identity()],
+            joint_transforms: vec![],
+            mesh: GlTriangleMesh::new(gl, &Mesh::new(vertices, triangles)),
+        }
+    }
+
+    fn draw(&self, camera: &Camera, aspect_ratio: f32) {
+        self.program.enable();
+
+        self.program
+            .uniform_matrix_4_f32_slice("view_transform", camera.view_transform().as_slice());
+        self.program.uniform_matrix_4_f32_slice(
+            "projection_transform",
+            camera.projection_transform(aspect_ratio).as_slice(),
+        );
+
+        self.program
+            .uniform_3_f32_slice("eye_position", camera.position().coords.as_slice());
+        self.program
+            .uniform_3_f32_slice("light_position", LIGHT_POSITION.as_slice());
+        self.program
+            .uniform_3_f32_slice("light_color", LIGHT_COLOR.as_slice());
+        self.program
+            .uniform_3_f32_slice("ambient", LIGHT_AMBIENT.as_slice());
+
+        self.program.uniform_f32("material_diffuse", 0.5);
+        self.program.uniform_f32("material_specular", 0.8);
+        self.program.uniform_f32("material_specular_exp", 20.0);
+
+        self.program
+            .uniform_4_f32_slice("material_color", &[1.0, 1.0, 0.0, 1.0]);
+
+        for transform in &self.joint_transforms {
+            self.program
+                .uniform_matrix_4_f32_slice("model_transform", transform.as_slice());
+            self.mesh.draw();
+        }
+
+        self.program
+            .uniform_4_f32_slice("material_color", &[0.2, 0.2, 0.8, 1.0]);
+
+        for transform in &self.bone_transforms {
+            self.program
+                .uniform_matrix_4_f32_slice("model_transform", transform.as_slice());
+            self.mesh.draw();
+        }
+    }
+}
 
 pub struct Puma {
     camera: Camera,
@@ -41,13 +107,11 @@ pub struct Puma {
     current_time: f64,
     current_quaternion: na::Matrix4<f32>,
     current_euler: na::Matrix4<f32>,
+
+    puma_model: PumaModel,
 }
 
 impl Puma {
-    const LIGHT_POSITION: na::Vector3<f32> = na::vector![2.0, 4.0, 2.0];
-    const LIGHT_COLOR: na::Vector3<f32> = na::vector![2.0, 2.0, 2.0];
-    const LIGHT_AMBIENT: na::Vector3<f32> = na::vector![0.4, 0.4, 0.4];
-
     fn new(
         gl: Arc<glow::Context>,
         start_rotation: Rotation,
@@ -80,6 +144,7 @@ impl Puma {
         );
 
         Self {
+            puma_model: PumaModel::new(Arc::clone(&gl)),
             camera: Camera::new(),
 
             drawbuffer: RefCell::new(None),
@@ -236,7 +301,28 @@ impl Puma {
         self.cube_mesh.draw();
     }
 
-    fn draw_axes(&self, current_frame: &na::Matrix4<f32>, keyframes: &[na::Matrix4<f32>]) {
+    fn draw_axes(
+        &self,
+        current_frame: &na::Matrix4<f32>,
+        keyframes: &[na::Matrix4<f32>],
+        aspect_ratio: f32,
+    ) {
+        self.meshes_program.enable();
+        self.meshes_program
+            .uniform_matrix_4_f32_slice("view_transform", self.camera.view_transform().as_slice());
+        self.meshes_program.uniform_matrix_4_f32_slice(
+            "projection_transform",
+            self.camera.projection_transform(aspect_ratio).as_slice(),
+        );
+
+        self.meshes_program
+            .uniform_3_f32_slice("eye_position", self.camera.position().coords.as_slice());
+        self.meshes_program
+            .uniform_3_f32_slice("light_position", LIGHT_POSITION.as_slice());
+        self.meshes_program
+            .uniform_3_f32_slice("light_color", LIGHT_COLOR.as_slice());
+        self.meshes_program
+            .uniform_3_f32_slice("ambient", LIGHT_AMBIENT.as_slice());
         self.meshes_program.uniform_f32("material_diffuse", 0.8);
         self.meshes_program.uniform_f32("material_specular", 0.4);
         self.meshes_program
@@ -269,32 +355,21 @@ impl Puma {
             return;
         };
 
-        self.meshes_program.enable();
-        self.meshes_program
-            .uniform_matrix_4_f32_slice("view_transform", self.camera.view_transform().as_slice());
-        self.meshes_program.uniform_matrix_4_f32_slice(
-            "projection_transform",
-            self.camera.projection_transform(aspect_ratio).as_slice(),
-        );
-
-        self.meshes_program
-            .uniform_3_f32_slice("eye_position", self.camera.position().coords.as_slice());
-        self.meshes_program
-            .uniform_3_f32_slice("light_position", Self::LIGHT_POSITION.as_slice());
-        self.meshes_program
-            .uniform_3_f32_slice("light_color", Self::LIGHT_COLOR.as_slice());
-        self.meshes_program
-            .uniform_3_f32_slice("ambient", Self::LIGHT_AMBIENT.as_slice());
-
         drawbuffer.clear();
         drawbuffer.draw_with(|| {
-            self.draw_axes(&self.current_euler, &self.keyframes_euler);
+            self.draw_axes(&self.current_euler, &self.keyframes_euler, aspect_ratio);
+            self.puma_model.draw(&self.camera, aspect_ratio);
         });
         drawbuffer.blit(0, 0);
 
         drawbuffer.clear();
         drawbuffer.draw_with(|| {
-            self.draw_axes(&self.current_quaternion, &self.keyframes_quaternion);
+            self.draw_axes(
+                &self.current_quaternion,
+                &self.keyframes_quaternion,
+                aspect_ratio,
+            );
+            self.puma_model.draw(&self.camera, aspect_ratio);
         });
         drawbuffer.blit(drawbuffer.size().width, 0);
     }
