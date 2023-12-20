@@ -8,6 +8,7 @@ pub mod parametric;
 pub mod rect;
 pub mod rotations;
 pub mod segment;
+pub mod angle;
 
 pub use ode::EulerODESolver;
 pub use ode::RungeKuttaIV;
