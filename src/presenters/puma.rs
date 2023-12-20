@@ -6,6 +6,7 @@ use crate::{
         drawbuffer::Drawbuffer, gl_drawable::GlDrawable, gl_mesh::GlTriangleMesh,
         gl_program::GlProgram, gridable::Triangable, mesh::Mesh, models,
     },
+    simulators::puma::{ConfigState, CylindersTransforms, Params},
     ui::widgets,
 };
 use egui::{widgets::DragValue, Ui};
@@ -15,27 +16,29 @@ use nalgebra as na;
 use std::cell::RefCell;
 use std::sync::Arc;
 
-struct PumaModel {
-    program: GlProgram,
-    mesh: GlTriangleMesh,
-    bone_transforms: Vec<na::Matrix4<f32>>,
-    joint_transforms: Vec<na::Matrix4<f32>>,
-}
-
 const LIGHT_POSITION: na::Vector3<f32> = na::vector![2.0, 4.0, 2.0];
 const LIGHT_COLOR: na::Vector3<f32> = na::vector![2.0, 2.0, 2.0];
 const LIGHT_AMBIENT: na::Vector3<f32> = na::vector![0.4, 0.4, 0.4];
 
+struct PumaModel {
+    program: GlProgram,
+    mesh: GlTriangleMesh,
+    transform: CylindersTransforms,
+}
+
 impl PumaModel {
-    fn new(gl: Arc<glow::Context>) -> Self {
+    fn new(gl: Arc<glow::Context>, state: &ConfigState, params: &Params) -> Self {
         let (vertices, triangles) = Cylinder::new(1.0, 1.0).triangulation(50, 50);
 
         Self {
             program: GlProgram::vertex_fragment(Arc::clone(&gl), "perspective_vert", "phong_frag"),
-            bone_transforms: vec![na::Matrix4::identity()],
-            joint_transforms: vec![],
+            transform: state.forward_kinematics(params),
             mesh: GlTriangleMesh::new(gl, &Mesh::new(vertices, triangles)),
         }
+    }
+
+    fn set_state(&mut self, state: &ConfigState, params: &Params) {
+        self.transform = state.forward_kinematics(params);
     }
 
     fn draw(&self, camera: &Camera, aspect_ratio: f32) {
@@ -64,18 +67,22 @@ impl PumaModel {
         self.program
             .uniform_4_f32_slice("material_color", &[1.0, 1.0, 0.0, 1.0]);
 
-        for transform in &self.joint_transforms {
-            self.program
-                .uniform_matrix_4_f32_slice("model_transform", transform.as_slice());
-            self.mesh.draw();
+        for transform in &self.transform.joint_transforms {
+            self.program.uniform_matrix_4_f32_slice(
+                "model_transform",
+                transform.map(|c| c as f32).as_slice(),
+            );
+            // self.mesh.draw();
         }
 
         self.program
             .uniform_4_f32_slice("material_color", &[0.2, 0.2, 0.8, 1.0]);
 
-        for transform in &self.bone_transforms {
-            self.program
-                .uniform_matrix_4_f32_slice("model_transform", transform.as_slice());
+        for transform in self.transform.bone_transforms.iter().take(4) {
+            self.program.uniform_matrix_4_f32_slice(
+                "model_transform",
+                transform.map(|c| c as f32).as_slice(),
+            );
             self.mesh.draw();
         }
     }
@@ -101,9 +108,6 @@ pub struct Puma {
 
     animation_time: f64,
 
-    keyframes_quaternion: Vec<na::Matrix4<f32>>,
-    keyframes_euler: Vec<na::Matrix4<f32>>,
-
     current_time: f64,
     current_quaternion: na::Matrix4<f32>,
     current_euler: na::Matrix4<f32>,
@@ -119,7 +123,6 @@ impl Puma {
         end_rotation: Rotation,
         end_position: na::Vector3<f64>,
         slerp: bool,
-        keyframes: usize,
     ) -> Self {
         let start_rotation_euler = start_rotation.normalize().to_euler_angles().normalize();
         let start_rotation_quaternion = start_rotation.normalize().to_quaternion().normalize();
@@ -131,7 +134,7 @@ impl Puma {
             &start_position,
             &end_rotation_euler,
             &end_position,
-            keyframes,
+            2,
         );
 
         let keyframes_quaternion = Self::quaternion_keyframes(
@@ -139,12 +142,18 @@ impl Puma {
             &start_position,
             &end_rotation_quaternion,
             &end_position,
-            keyframes,
+            2,
             slerp,
         );
 
+        let params = Params {
+            l1: 3.0,
+            l3: 3.0,
+            l4: 3.0,
+        };
+
         Self {
-            puma_model: PumaModel::new(Arc::clone(&gl)),
+            puma_model: PumaModel::new(Arc::clone(&gl), &ConfigState::new(), &params),
             camera: Camera::new(),
 
             drawbuffer: RefCell::new(None),
@@ -170,9 +179,6 @@ impl Puma {
             current_time: 0.0,
             current_quaternion: keyframes_quaternion[0],
             current_euler: keyframes_euler[0],
-
-            keyframes_euler,
-            keyframes_quaternion,
         }
     }
 
@@ -270,13 +276,7 @@ impl Puma {
             .collect()
     }
 
-    fn draw_axis(
-        &self,
-        keyframes: &[na::Matrix4<f32>],
-        current_frame: &na::Matrix4<f32>,
-        vector: &na::Vector3<f32>,
-        color: &[f32; 4],
-    ) {
+    fn draw_axis(&self, transform: &na::Matrix4<f32>, vector: &na::Vector3<f32>, color: &[f32; 4]) {
         let ones = na::vector![1.0, 1.0, 1.0];
         let scale = 0.6 * (ones * 0.1 + vector).simd_clamp(na::Vector3::zeros(), ones);
         let translation = 0.4 * vector;
@@ -286,27 +286,12 @@ impl Puma {
         self.meshes_program
             .uniform_4_f32_slice("material_color", color);
 
-        for transform in keyframes {
-            self.meshes_program.uniform_matrix_4_f32_slice(
-                "model_transform",
-                (transform * base_transform).as_slice(),
-            );
-            self.cube_mesh.draw();
-        }
-
-        self.meshes_program.uniform_matrix_4_f32_slice(
-            "model_transform",
-            (current_frame * base_transform).as_slice(),
-        );
+        self.meshes_program
+            .uniform_matrix_4_f32_slice("model_transform", (transform * base_transform).as_slice());
         self.cube_mesh.draw();
     }
 
-    fn draw_axes(
-        &self,
-        current_frame: &na::Matrix4<f32>,
-        keyframes: &[na::Matrix4<f32>],
-        aspect_ratio: f32,
-    ) {
+    fn draw_axes(&self, transform: &na::Matrix4<f32>, aspect_ratio: f32) {
         self.meshes_program.enable();
         self.meshes_program
             .uniform_matrix_4_f32_slice("view_transform", self.camera.view_transform().as_slice());
@@ -329,20 +314,17 @@ impl Puma {
             .uniform_f32("material_specular_exp", 10.0);
 
         self.draw_axis(
-            keyframes,
-            current_frame,
+            transform,
             &na::vector![1.0, 0.0, 0.0],
             &[1.0, 0.0, 0.0, 1.0],
         );
         self.draw_axis(
-            keyframes,
-            current_frame,
+            transform,
             &na::vector![0.0, 1.0, 0.0],
             &[0.0, 1.0, 0.0, 1.0],
         );
         self.draw_axis(
-            keyframes,
-            current_frame,
+            transform,
             &na::vector![0.0, 0.0, 1.0],
             &[0.0, 0.0, 1.0, 1.0],
         );
@@ -357,18 +339,14 @@ impl Puma {
 
         drawbuffer.clear();
         drawbuffer.draw_with(|| {
-            self.draw_axes(&self.current_euler, &self.keyframes_euler, aspect_ratio);
+            self.draw_axes(&self.current_euler, aspect_ratio);
             self.puma_model.draw(&self.camera, aspect_ratio);
         });
         drawbuffer.blit(0, 0);
 
         drawbuffer.clear();
         drawbuffer.draw_with(|| {
-            self.draw_axes(
-                &self.current_quaternion,
-                &self.keyframes_quaternion,
-                aspect_ratio,
-            );
+            self.draw_axes(&self.current_quaternion, aspect_ratio);
             self.puma_model.draw(&self.camera, aspect_ratio);
         });
         drawbuffer.blit(drawbuffer.size().width, 0);
@@ -507,7 +485,6 @@ impl PresenterBuilder for PumaBuilder {
             self.end_rotation.normalize(),
             self.end_position,
             self.slerp,
-            self.keyframes,
         ))
     }
 }
