@@ -1,7 +1,7 @@
 use crate::numerics::{angle::Angle, rotations::*};
 use nalgebra as na;
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Copy)]
 pub struct ConfigState {
     pub a1: Angle,
     pub a2: Angle,
@@ -84,6 +84,7 @@ impl ConfigState {
 
 pub enum InverseSolution {}
 
+#[derive(Clone)]
 pub struct CylindersTransforms {
     pub bone_transforms: [na::Matrix4<f64>; 5],
     pub joint_transforms: [na::Matrix4<f64>; 6],

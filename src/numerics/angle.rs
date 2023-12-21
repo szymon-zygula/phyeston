@@ -14,6 +14,14 @@ impl Angle {
         self.0.to_degrees()
     }
 
+    pub fn set_rad(&mut self, val: f64) {
+        self.0 = val;
+    }
+
+    pub fn set_deg(&mut self, val: f64) {
+        self.0 = val.to_radians();
+    }
+
     pub fn lerp(&self, mut other: Self, t: f64) -> Self {
         let mut me = *self;
         if (other.0 - me.0).abs() > 180.0 {
