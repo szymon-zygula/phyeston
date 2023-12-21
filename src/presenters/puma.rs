@@ -86,7 +86,7 @@ impl PumaModel {
                 "model_transform",
                 transform.map(|c| c as f32).as_slice(),
             );
-            // self.mesh.draw();
+            self.cylinder.draw();
         }
 
         self.program

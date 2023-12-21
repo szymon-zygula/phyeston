@@ -44,22 +44,26 @@ impl ConfigState {
         let rot3 = rotate_y(std::f64::consts::PI);
         let rot4 = rotate_y(std::f64::consts::FRAC_PI_2);
 
+        let f02 = f01 * f11 * f12;
+        let f03 = f02 * f22 * f23;
+        let f04 = f03 * f33 * f34;
+        let f05 = f04 * f44 * f45;
+
         CylindersTransforms {
             bone_transforms: [
                 f01 * f11_half * thin * scale1,
-                f01 * f11 * f12 * f22_half * rot2 * thin * scale2,
-                f01 * f11 * f12 * f22 * f23 * f33_half * rot3 * thin * scale3,
-                f01 * f11 * f12 * f22 * f23 * f33 * f34 * f44_half * rot4 * thin * scale4,
-                f01 * f11 * f12 * f22 * f23 * f33 * f34 * f44 * f45,
+                f02 * f22_half * rot2 * thin * scale2,
+                f03 * f33_half * rot3 * thin * scale3,
+                f04 * f44_half * rot4 * thin * scale4,
+                f05,
             ],
             joint_transforms: [
-                na::Matrix4::identity(),
-                na::Matrix4::identity(),
-                na::Matrix4::identity(),
-                na::Matrix4::identity(),
-                na::Matrix4::identity(),
-                na::Matrix4::identity(),
-            ],
+                na::Scale3::new(2.0, 2.0, 2.0).to_homogeneous(),
+                f01 * f11 * rotate_x(std::f64::consts::FRAC_PI_2),
+                f02 * f22 * rotate_x(std::f64::consts::FRAC_PI_2),
+                f03 * f33,
+            ]
+            .map(|m| m * na::Scale3::new(0.2, 0.2, 0.2).to_homogeneous()),
         }
     }
 
@@ -87,7 +91,7 @@ pub enum InverseSolution {}
 #[derive(Clone)]
 pub struct CylindersTransforms {
     pub bone_transforms: [na::Matrix4<f64>; 5],
-    pub joint_transforms: [na::Matrix4<f64>; 6],
+    pub joint_transforms: [na::Matrix4<f64>; 4],
 }
 
 pub struct SceneState {
