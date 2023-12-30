@@ -112,7 +112,21 @@ impl SceneState {
 
         let a1 = if p3.x != 0.0 || p3.y != 0.0 {
             let a1_abs = Angle::from_rad(f64::atan2(p3.y, p3.x).abs());
-            guide.a1.closest(a1_abs, -a1_abs)
+            let c1 = a1_abs.cos();
+
+            if c1 * p3.x > 0.0 {
+                if p3.y > 0.0 {
+                    a1_abs
+                } else {
+                    -a1_abs
+                }
+            } else {
+                if p3.y > 0.0 {
+                    -a1_abs
+                } else {
+                    a1_abs
+                }
+            }
         } else {
             guide.a1
         };
@@ -130,7 +144,11 @@ impl SceneState {
         // TODO: both are 0
         let a2 = Angle::from_rad(f64::atan2(
             params.l1 - params.l3 * c23 - p3.z,
-            if c1 == 0.0 { p3.y / s1 } else { p3.x / c1 } + params.l3 * s23,
+            if c1.abs() < s1.abs() {
+                p3.y / s1
+            } else {
+                p3.x / c1
+            } + params.l3 * s23,
         ));
 
         let s2 = a2.sin();
@@ -138,10 +156,15 @@ impl SceneState {
 
         let a3 = a23 - a2;
 
-        let q2 = if s2 != 0.0 {
+        let q2 = if s2.abs() > c2.abs() {
             (params.l1 - params.l3 * c23 - p3.z) / s2
         } else {
-            (if s1 != 0.0 { p3.y / s1 } else { p3.x / c1 } + params.l3 * s23) / c2
+            (if s1.abs() > c2.abs() {
+                p3.y / s1
+            } else {
+                p3.x / c1
+            } + params.l3 * s23)
+                / c2
         };
 
         let d3x = (rotate_z(a1.rad())
@@ -150,28 +173,22 @@ impl SceneState {
             * na::vector![1.0, 0.0, 0.0, 0.0])
         .normalize();
 
-        let d3y = (rotate_z(a1.rad())
+        let d3z = (rotate_z(a1.rad())
             * rotate_y(a2.rad())
             * rotate_y(a3.rad())
-            * na::vector![0.0, 1.0, 0.0, 0.0])
+            * na::vector![0.0, 0.0, 1.0, 0.0])
         .normalize();
 
         let c4 = na::Vector3::dot(&d3x.xyz(), &d4x.xyz()).clamp(-1.0, 1.0);
         let a4_abs = Angle::from_rad(c4.acos());
 
-        let a4 = if na::Vector3::cross(&d3x.xyz(), &d4x.xyz()).dot(&d3y.xyz()) > 0.0 {
+        let a4 = if na::Vector3::cross(&d3x.xyz(), &d4x.xyz()).dot(&d3z.xyz()) > 0.0 {
             a4_abs
         } else {
             -a4_abs
         };
 
-        let d4z = (rotate_z(a1.rad())
-            * rotate_y(a2.rad())
-            * rotate_y(a3.rad())
-            * rotate_z(a4.rad())
-            * na::vector![0.0, 0.0, 1.0, 0.0])
-        .normalize();
-
+        let d4z = d3z; // Rotation 4 is around Z axis
         let d5z = (self.rotation.to_homogeneous() * na::vector![0.0, 0.0, 1.0, 0.0]).normalize();
 
         let c5 = na::Vector3::dot(&d4z.xyz(), &d5z.xyz()).clamp(-1.0, 1.0);

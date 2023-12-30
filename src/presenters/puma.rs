@@ -262,7 +262,7 @@ impl Presenter for Puma {
         ui.label("q2");
         ui.add(
             DragValue::new(&mut self.state_left.q2)
-                .clamp_range(0.0..=5.0)
+                .clamp_range(0.0..=20.0)
                 .speed(0.1),
         );
 
@@ -371,7 +371,7 @@ impl PumaBuilder {
                         vector = &mut dummy_vector;
                     }
 
-                    widgets::vector_drag(ui, vector, 0.0, 360.0, "°", 1.0, &["z", "y", "x"])
+                    widgets::vector_drag(ui, vector, 0.0, 360.0, "°", 1.0, &["x", "y", "z"])
                 }
             }
     }
