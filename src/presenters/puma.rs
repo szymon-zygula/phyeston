@@ -6,7 +6,7 @@ use crate::{
         drawbuffer::Drawbuffer, gl_drawable::GlDrawable, gl_mesh::GlTriangleMesh,
         gl_program::GlProgram, gridable::Triangable, mesh::Mesh, models,
     },
-    simulators::puma::{ConfigState, CylindersTransforms, Params},
+    simulators::puma::{ConfigState, CylindersTransforms, Params, SceneState},
     ui::widgets,
 };
 use egui::{widgets::DragValue, Ui};
@@ -27,7 +27,7 @@ struct PumaModel {
 }
 
 impl PumaModel {
-    fn new(gl: Arc<glow::Context>, transform: CylindersTransforms) -> Self {
+    fn new(gl: Arc<glow::Context>) -> Self {
         let (vertices, triangles) = Cylinder::new(1.0, 1.0).triangulation(50, 50);
 
         Self {
@@ -136,15 +136,10 @@ pub struct Puma {
     params: Params,
 
     drawbuffer: RefCell<Option<Drawbuffer>>,
-    meshes_program: GlProgram,
     gl: Arc<glow::Context>,
 
-    start_rotation: Quaternion,
-    start_position: na::Vector3<f64>,
-    end_rotation: Quaternion,
-    end_position: na::Vector3<f64>,
-
-    slerp: bool,
+    start_scene: SceneState,
+    end_scene: SceneState,
 
     animation_time: f64,
     current_time: f64,
@@ -153,48 +148,28 @@ pub struct Puma {
 impl Puma {
     fn new(
         gl: Arc<glow::Context>,
-        start_rotation: Rotation,
-        start_position: na::Vector3<f64>,
-        end_rotation: Rotation,
-        end_position: na::Vector3<f64>,
-        slerp: bool,
+        start_scene: SceneState,
+        end_scene: SceneState,
+        params: Params,
     ) -> Self {
-        let start_rotation = start_rotation.normalize().to_quaternion().normalize();
-        let end_rotation = end_rotation.normalize().to_quaternion().normalize();
-
-        let params = Params {
-            l1: 3.0,
-            l3: 3.0,
-            l4: 3.0,
-        };
-
-        let default_state = ConfigState::new();
-        let default_transform = default_state.forward_kinematics(&params);
+        let start_state = start_scene.inverse_kinematics(&ConfigState::new(), &params);
+        let default_transform = start_state.forward_kinematics(&params);
 
         Self {
-            puma_model: PumaModel::new(Arc::clone(&gl), default_state.forward_kinematics(&params)),
+            puma_model: PumaModel::new(Arc::clone(&gl)),
             camera: Camera::new(),
 
-            state_left: default_state,
-            state_right: default_state,
+            state_left: start_state,
+            state_right: start_state,
             transform_left: default_transform.clone(),
             transform_right: default_transform,
             params,
 
             drawbuffer: RefCell::new(None),
-            meshes_program: GlProgram::vertex_fragment(
-                Arc::clone(&gl),
-                "perspective_vert",
-                "phong_frag",
-            ),
             gl,
 
-            start_rotation,
-            start_position,
-            end_rotation,
-            end_position,
-
-            slerp,
+            start_scene,
+            end_scene,
 
             animation_time: 5.0,
             current_time: 0.0,
@@ -284,7 +259,7 @@ impl Presenter for Puma {
         angle_slider(ui, "α3", &mut self.state_left.a3);
         angle_slider(ui, "α4", &mut self.state_left.a4);
         angle_slider(ui, "α5", &mut self.state_left.a5);
-        ui.label("q1");
+        ui.label("q2");
         ui.add(
             DragValue::new(&mut self.state_left.q2)
                 .clamp_range(0.0..=5.0)
@@ -317,12 +292,6 @@ impl Presenter for Puma {
         self.current_time += delta.as_secs_f64() / self.animation_time;
         self.current_time = self.current_time.clamp(0.0, 1.0);
 
-        let interpolation = if self.slerp {
-            Quaternion::slerp
-        } else {
-            Quaternion::lerp
-        };
-
         self.transform_left = self.state_left.forward_kinematics(&self.params);
         self.transform_right = self.state_right.forward_kinematics(&self.params);
     }
@@ -339,16 +308,37 @@ impl Presenter for Puma {
 #[derive(Default)]
 pub struct PumaBuilder {
     start_rotation: Rotation,
-    start_position: na::Vector3<f64>,
+    start_position: na::Point3<f64>,
     end_rotation: Rotation,
-    end_position: na::Vector3<f64>,
-    slerp: bool,
+    end_position: na::Point3<f64>,
     keyframes: usize,
+    params: Params,
 }
 
 impl PumaBuilder {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    fn params_ui(&mut self, ui: &mut Ui) -> egui::Response {
+        ui.label("l1")
+            | ui.add(
+                DragValue::new(&mut self.params.l1)
+                    .clamp_range(0.0..=5.0)
+                    .speed(0.1),
+            )
+            | ui.label("l3")
+            | ui.add(
+                DragValue::new(&mut self.params.l3)
+                    .clamp_range(0.0..=5.0)
+                    .speed(0.1),
+            )
+            | ui.label("l4")
+            | ui.add(
+                DragValue::new(&mut self.params.l4)
+                    .clamp_range(0.0..=5.0)
+                    .speed(0.1),
+            )
     }
 
     fn frame_ui(
@@ -389,24 +379,27 @@ impl PumaBuilder {
 
 impl PresenterBuilder for PumaBuilder {
     fn build_ui(&mut self, ui: &mut Ui) -> egui::Response {
-        ui.label("Start frame")
-            | Self::frame_ui(ui, &mut self.start_rotation, &mut self.start_position)
+        self.params_ui(ui)
+            | ui.label("Start frame")
+            | Self::frame_ui(
+                ui,
+                &mut self.start_rotation,
+                &mut self.start_position.coords,
+            )
             | ui.separator()
             | ui.label("End frame")
-            | Self::frame_ui(ui, &mut self.end_rotation, &mut self.end_position)
+            | Self::frame_ui(ui, &mut self.end_rotation, &mut self.end_position.coords)
             | ui.separator()
-            | ui.checkbox(&mut self.slerp, "Use spherical quaternion interpolation")
             | ui.add(DragValue::new(&mut self.keyframes).clamp_range(0..=100))
     }
 
     fn build(&self, gl: Arc<glow::Context>) -> Box<dyn Presenter> {
-        Box::new(Puma::new(
-            gl,
-            self.start_rotation.normalize(),
-            self.start_position,
-            self.end_rotation.normalize(),
-            self.end_position,
-            self.slerp,
-        ))
+        let start_rotation = self.start_rotation.normalize().to_quaternion().normalize();
+        let end_rotation = self.end_rotation.normalize().to_quaternion().normalize();
+
+        let start_scene = SceneState::new(self.start_position, start_rotation);
+        let end_scene = SceneState::new(self.end_position, end_rotation);
+
+        Box::new(Puma::new(gl, start_scene, end_scene, self.params))
     }
 }

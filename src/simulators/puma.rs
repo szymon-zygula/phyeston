@@ -1,7 +1,7 @@
 use crate::numerics::{angle::Angle, rotations::*};
 use nalgebra as na;
 
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ConfigState {
     pub a1: Angle,
     pub a2: Angle,
@@ -67,12 +67,9 @@ impl ConfigState {
         }
     }
 
-    pub fn next_config(&self, next_position: &SceneState) {
-        let solution = next_position.inverse_kinematics();
-        self.closest_config(&solution)
+    pub fn next_config(&self, next_position: &SceneState, params: &Params) -> Self {
+        next_position.inverse_kinematics(&self, params)
     }
-
-    pub fn closest_config(&self, solution: &InverseSolution) {}
 
     pub fn lerp(&self, other: &Self, t: f64) -> Self {
         Self {
@@ -86,8 +83,6 @@ impl ConfigState {
     }
 }
 
-pub enum InverseSolution {}
-
 #[derive(Clone)]
 pub struct CylindersTransforms {
     pub bone_transforms: [na::Matrix4<f64>; 5],
@@ -96,17 +91,122 @@ pub struct CylindersTransforms {
 
 pub struct SceneState {
     pub position: na::Point3<f64>,
-    pub direction: Quaternion,
+    pub rotation: Quaternion,
 }
 
 impl SceneState {
-    pub fn inverse_kinematics(&self) -> InverseSolution {
-        todo!()
+    pub fn new(position: na::Point3<f64>, rotation: Quaternion) -> Self {
+        Self { position, rotation }
+    }
+
+    pub fn inverse_kinematics(&self, guide: &ConfigState, params: &Params) -> ConfigState {
+        // Effector is at p4, its axes are i5, j5 and k5
+        let p4 = self.position;
+        let p4 = na::vector![p4.x, p4.y, p4.z, 1.0];
+        let d4x = (self.rotation.to_homogeneous() * na::vector![1.0, 0.0, 0.0, 0.0]).normalize();
+        let i = d4x.x;
+        let j = d4x.y;
+        let k = d4x.z;
+
+        let p3 = p4 - params.l4 * d4x;
+
+        let a1 = if p3.x != 0.0 || p3.y != 0.0 {
+            let a1_abs = Angle::from_rad(f64::atan2(p3.y, p3.x).abs());
+            guide.a1.closest(a1_abs, -a1_abs)
+        } else {
+            guide.a1
+        };
+
+        let s1 = a1.sin();
+        let c1 = a1.cos();
+
+        let icjs = i * c1 + j * s1;
+
+        // a2 + a3, TODO: k == ij == 0
+        let a23 = Angle::from_rad(f64::atan2(k, -icjs));
+        let s23 = a23.sin();
+        let c23 = a23.cos();
+
+        // TODO: both are 0
+        let a2 = Angle::from_rad(f64::atan2(
+            params.l1 - params.l3 * c23 - p3.z,
+            if c1 == 0.0 { p3.y / s1 } else { p3.x / c1 } + params.l3 * s23,
+        ));
+
+        let s2 = a2.sin();
+        let c2 = a2.cos();
+
+        let a3 = a23 - a2;
+
+        let q2 = if s2 != 0.0 {
+            (params.l1 - params.l3 * c23 - p3.z) / s2
+        } else {
+            (if s1 != 0.0 { p3.y / s1 } else { p3.x / c1 } + params.l3 * s23) / c2
+        };
+
+        let d3x = (rotate_z(a1.rad())
+            * rotate_y(a2.rad())
+            * rotate_y(a3.rad())
+            * na::vector![1.0, 0.0, 0.0, 0.0])
+        .normalize();
+
+        let d3y = (rotate_z(a1.rad())
+            * rotate_y(a2.rad())
+            * rotate_y(a3.rad())
+            * na::vector![0.0, 1.0, 0.0, 0.0])
+        .normalize();
+
+        let c4 = na::Vector3::dot(&d3x.xyz(), &d4x.xyz()).clamp(-1.0, 1.0);
+        let a4_abs = Angle::from_rad(c4.acos());
+
+        let a4 = if na::Vector3::cross(&d3x.xyz(), &d4x.xyz()).dot(&d3y.xyz()) > 0.0 {
+            a4_abs
+        } else {
+            -a4_abs
+        };
+
+        let d4z = (rotate_z(a1.rad())
+            * rotate_y(a2.rad())
+            * rotate_y(a3.rad())
+            * rotate_z(a4.rad())
+            * na::vector![0.0, 0.0, 1.0, 0.0])
+        .normalize();
+
+        let d5z = (self.rotation.to_homogeneous() * na::vector![0.0, 0.0, 1.0, 0.0]).normalize();
+
+        let c5 = na::Vector3::dot(&d4z.xyz(), &d5z.xyz()).clamp(-1.0, 1.0);
+        let a5_abs = Angle::from_rad(c5.acos());
+
+        let a5 = if na::Vector3::cross(&d4z.xyz(), &d5z.xyz()).dot(&d4x.xyz()) > 0.0 {
+            a5_abs
+        } else {
+            -a5_abs
+        };
+
+        ConfigState {
+            a1,
+            a2,
+            a3,
+            a4,
+            a5,
+            q2,
+        }
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Params {
     pub l1: f64,
     pub l3: f64,
     pub l4: f64,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            l1: 3.0,
+            l3: 3.0,
+            l4: 3.0,
+        }
+    }
 }
