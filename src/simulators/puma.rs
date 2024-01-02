@@ -159,7 +159,7 @@ impl SceneState {
         let q2 = if s2.abs() > c2.abs() {
             (params.l1 - params.l3 * c23 - p3.z) / s2
         } else {
-            (if s1.abs() > c2.abs() {
+            (if s1.abs() > c1.abs() {
                 p3.y / s1
             } else {
                 p3.x / c1
