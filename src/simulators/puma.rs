@@ -1,5 +1,6 @@
 use crate::numerics::{angle::Angle, rotations::*};
 use nalgebra as na;
+use std::f64::consts::PI;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ConfigState {
@@ -99,6 +100,13 @@ impl SceneState {
         Self { position, rotation }
     }
 
+    pub fn interpolate(&self, other: &Self, t: f64) -> Self {
+        Self::new(
+            self.position.lerp(&other.position, t),
+            self.rotation.slerp(&other.rotation, t),
+        )
+    }
+
     pub fn inverse_kinematics(&self, guide: &ConfigState, params: &Params) -> ConfigState {
         // Effector is at p4, its axes are i5, j5 and k5
         let p4 = self.position;
@@ -114,7 +122,7 @@ impl SceneState {
             let a1_abs = Angle::from_rad(f64::atan2(p3.y, p3.x).abs());
             let c1 = a1_abs.cos();
 
-            if c1 * p3.x > 0.0 {
+            let a1_mod_pi = if c1 * p3.x > 0.0 {
                 if p3.y > 0.0 {
                     a1_abs
                 } else {
@@ -126,7 +134,9 @@ impl SceneState {
                 } else {
                     a1_abs
                 }
-            }
+            };
+
+            guide.a1.closest(a1_mod_pi, a1_mod_pi + Angle::pi_rad())
         } else {
             guide.a1
         };
@@ -136,20 +146,29 @@ impl SceneState {
 
         let icjs = i * c1 + j * s1;
 
-        // a2 + a3, TODO: k == ij == 0
-        let a23 = Angle::from_rad(f64::atan2(k, -icjs));
+        // a2 + a3
+        let a23 = if k == 0.0 && icjs == 0.0 {
+            guide.a2 + guide.a3
+        } else {
+            let a23_mod_pi = Angle::from_rad(f64::atan2(k, -icjs));
+            (guide.a2 + guide.a3).closest(a23_mod_pi, a23_mod_pi + Angle::pi_rad())
+        };
+
         let s23 = a23.sin();
         let c23 = a23.cos();
 
-        // TODO: both are 0
-        let a2 = Angle::from_rad(f64::atan2(
-            params.l1 - params.l3 * c23 - p3.z,
-            if c1.abs() < s1.abs() {
-                p3.y / s1
-            } else {
-                p3.x / c1
-            } + params.l3 * s23,
-        ));
+        let y_a2 = params.l1 - params.l3 * c23 - p3.z;
+        let x_a2 = if c1.abs() < s1.abs() {
+            p3.y / s1
+        } else {
+            p3.x / c1
+        } + params.l3 * s23;
+
+        let a2 = if x_a2 == 0.0 && y_a2 == 0.0 {
+            guide.a2
+        } else {
+            Angle::from_rad(f64::atan2(y_a2, x_a2))
+        };
 
         let s2 = a2.sin();
         let c2 = a2.cos();

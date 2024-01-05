@@ -24,6 +24,7 @@ struct PumaModel {
     program: GlProgram,
     cylinder: GlTriangleMesh,
     cube: GlTriangleMesh,
+    pretransform: na::Matrix4<f32>,
 }
 
 impl PumaModel {
@@ -34,6 +35,7 @@ impl PumaModel {
             program: GlProgram::vertex_fragment(Arc::clone(&gl), "perspective_vert", "phong_frag"),
             cylinder: GlTriangleMesh::new(Arc::clone(&gl), &Mesh::new(vertices, triangles)),
             cube: GlTriangleMesh::new(Arc::clone(&gl), &models::cube()),
+            pretransform: rotate_x(-std::f64::consts::FRAC_PI_2).map(|c| c as f32),
         }
     }
 
@@ -46,8 +48,10 @@ impl PumaModel {
             * na::Scale3::from(scale).to_homogeneous();
 
         self.program.uniform_4_f32_slice("material_color", color);
-        self.program
-            .uniform_matrix_4_f32_slice("model_transform", (transform * base_transform).as_slice());
+        self.program.uniform_matrix_4_f32_slice(
+            "model_transform",
+            (self.pretransform * transform * base_transform).as_slice(),
+        );
         self.cube.draw();
     }
 
@@ -84,7 +88,7 @@ impl PumaModel {
         for transform in transform.joint_transforms {
             self.program.uniform_matrix_4_f32_slice(
                 "model_transform",
-                transform.map(|c| c as f32).as_slice(),
+                (self.pretransform * transform.map(|c| c as f32)).as_slice(),
             );
             self.cylinder.draw();
         }
@@ -95,7 +99,7 @@ impl PumaModel {
         for transform in transform.bone_transforms.iter().take(4) {
             self.program.uniform_matrix_4_f32_slice(
                 "model_transform",
-                transform.map(|c| c as f32).as_slice(),
+                (self.pretransform * transform.map(|c| c as f32)).as_slice(),
             );
             self.cylinder.draw();
         }
@@ -129,7 +133,6 @@ pub struct Puma {
     puma_model: PumaModel,
     camera: Camera,
 
-    state_left: ConfigState,
     state_right: ConfigState,
     transform_left: CylindersTransforms,
     transform_right: CylindersTransforms,
@@ -141,11 +144,18 @@ pub struct Puma {
     start_scene: SceneState,
     end_scene: SceneState,
 
+    left_start: ConfigState,
+    left_end: ConfigState,
+    right_prev: ConfigState,
+
     animation_time: f64,
     current_time: f64,
+    reverse: bool,
 }
 
 impl Puma {
+    const RIGHT_SAMPLING: f64 = 0.0001;
+
     fn new(
         gl: Arc<glow::Context>,
         start_scene: SceneState,
@@ -153,17 +163,21 @@ impl Puma {
         params: Params,
     ) -> Self {
         let start_state = start_scene.inverse_kinematics(&ConfigState::new(), &params);
+        let end_state = end_scene.inverse_kinematics(&ConfigState::new(), &params);
         let default_transform = start_state.forward_kinematics(&params);
 
         Self {
             puma_model: PumaModel::new(Arc::clone(&gl)),
             camera: Camera::new(),
 
-            state_left: start_state,
             state_right: start_state,
             transform_left: default_transform.clone(),
             transform_right: default_transform,
             params,
+
+            left_start: start_state,
+            left_end: end_state,
+            right_prev: ConfigState::new(),
 
             drawbuffer: RefCell::new(None),
             gl,
@@ -171,8 +185,9 @@ impl Puma {
             start_scene,
             end_scene,
 
-            animation_time: 5.0,
+            animation_time: 2.0,
             current_time: 0.0,
+            reverse: false,
         }
     }
 
@@ -193,22 +208,6 @@ impl Puma {
                 Drawbuffer::new(Arc::clone(&self.gl), s.width as i32 / 2, s.height as i32)
             }),
         );
-    }
-
-    fn quaternion_keyframe(
-        interpolation: fn(&Quaternion, &Quaternion, f64) -> Quaternion,
-        start_rotation: &Quaternion,
-        start_position: &na::Vector3<f64>,
-        end_rotation: &Quaternion,
-        end_position: &na::Vector3<f64>,
-        t: f64,
-    ) -> na::Matrix4<f32> {
-        na::Translation::from(na::Vector3::lerp(start_position, end_position, t))
-            .to_homogeneous()
-            .map(|r| r as f32)
-            * interpolation(start_rotation, end_rotation, t)
-                .to_homogeneous()
-                .map(|r| r as f32)
     }
 
     fn draw_meshes(&self, size: PhysicalSize<u32>) {
@@ -253,24 +252,11 @@ fn angle_slider(ui: &mut Ui, text: &str, angle: &mut Angle) -> egui::Response {
 
 impl Presenter for Puma {
     fn show_side_ui(&mut self, ui: &mut Ui) {
-        ui.label("Left config state");
-        angle_slider(ui, "α1", &mut self.state_left.a1);
-        angle_slider(ui, "α2", &mut self.state_left.a2);
-        angle_slider(ui, "α3", &mut self.state_left.a3);
-        angle_slider(ui, "α4", &mut self.state_left.a4);
-        angle_slider(ui, "α5", &mut self.state_left.a5);
-        ui.label("q2");
-        ui.add(
-            DragValue::new(&mut self.state_left.q2)
-                .clamp_range(0.0..=20.0)
-                .speed(0.1),
-        );
-
         ui.label("Animation time");
         ui.add(
             DragValue::new(&mut self.animation_time)
-                .clamp_range(0.0..=20.0)
-                .speed(0.5),
+                .clamp_range(0.1..=10.0)
+                .speed(0.1),
         );
     }
 
@@ -289,11 +275,44 @@ impl Presenter for Puma {
     }
 
     fn update(&mut self, delta: std::time::Duration) {
-        self.current_time += delta.as_secs_f64() / self.animation_time;
-        self.current_time = self.current_time.clamp(0.0, 1.0);
+        let prev_time = self.current_time;
+        self.current_time +=
+            if self.reverse { -1.0 } else { 1.0 } * delta.as_secs_f64() / self.animation_time;
 
-        self.transform_left = self.state_left.forward_kinematics(&self.params);
-        self.transform_right = self.state_right.forward_kinematics(&self.params);
+        if self.current_time > 1.0 {
+            self.current_time = 1.0;
+            self.reverse = true;
+        } else if self.current_time < 0.0 {
+            self.current_time = 0.0;
+            self.reverse = false;
+        }
+
+        let mut new_right = self
+            .start_scene
+            .interpolate(&self.end_scene, self.current_time)
+            .inverse_kinematics(&self.right_prev, &self.params);
+
+        let mut catchup_time = prev_time;
+        while (catchup_time - self.current_time).abs() >= Self::RIGHT_SAMPLING {
+            new_right = self
+                .start_scene
+                .interpolate(&self.end_scene, catchup_time)
+                .inverse_kinematics(&new_right, &self.params);
+
+            catchup_time += if catchup_time < self.current_time {
+                Self::RIGHT_SAMPLING
+            } else {
+                -Self::RIGHT_SAMPLING
+            };
+        }
+
+        self.transform_left = self
+            .left_start
+            .lerp(&self.left_end, self.current_time)
+            .forward_kinematics(&self.params);
+
+        self.transform_right = new_right.forward_kinematics(&self.params);
+        self.right_prev = new_right;
     }
 
     fn update_mouse(&mut self, state: MouseState) {
@@ -389,8 +408,6 @@ impl PresenterBuilder for PumaBuilder {
             | ui.separator()
             | ui.label("End frame")
             | Self::frame_ui(ui, &mut self.end_rotation, &mut self.end_position.coords)
-            | ui.separator()
-            | ui.add(DragValue::new(&mut self.keyframes).clamp_range(0..=100))
     }
 
     fn build(&self, gl: Arc<glow::Context>) -> Box<dyn Presenter> {

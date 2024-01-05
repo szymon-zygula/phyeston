@@ -63,6 +63,10 @@ impl Angle {
             a_1
         }
     }
+
+    pub fn pi_rad() -> Self {
+        Self::from_rad(std::f64::consts::PI)
+    }
 }
 
 impl std::ops::Add for Angle {
