@@ -2,6 +2,15 @@ use super::mesh::{ClassicVertex, Mesh, Triangle};
 use itertools::Itertools;
 use nalgebra as na;
 
+/// For GlLineStrip
+pub fn circle(points: usize) -> Vec<na::Point3<f32>> {
+    Vec::from_iter(
+        (0..points)
+            .map(|i| i as f32 / (points - 1) as f32 * std::f32::consts::TAU)
+            .map(|t| na::point![t.cos(), t.sin(), 0.0]),
+    )
+}
+
 pub fn cube() -> Mesh<ClassicVertex> {
     let vertices = vec![
         // Front

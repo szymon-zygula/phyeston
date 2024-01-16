@@ -1,6 +1,5 @@
 use crate::numerics::{angle::Angle, rotations::*};
 use nalgebra as na;
-use std::f64::consts::PI;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ConfigState {

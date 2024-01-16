@@ -5,7 +5,7 @@ use phyesthon::{
     presenters::{
         jelly::JellyBuilder, kinematic_chain::KinematicChainBuilder, puma::PumaBuilder,
         quaternions::QuaternionsBuilder, spinning_top::SpinningTopBuilder, spring::SpringBuilder,
-        Presenter, PresenterBuilder,
+        hodograph::HodographBuilder, Presenter, PresenterBuilder,
     },
     window::Window,
 };
@@ -20,6 +20,7 @@ fn main() {
     egui_extras::install_image_loaders(&mut egui_glow.egui_ctx);
 
     let mut builders: Vec<Box<dyn PresenterBuilder>> = vec![
+        Box::new(HodographBuilder::new()),
         Box::new(PumaBuilder::new()),
         Box::new(JellyBuilder::new()),
         Box::new(KinematicChainBuilder::new()),

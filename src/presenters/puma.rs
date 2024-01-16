@@ -1,7 +1,7 @@
 use super::{Presenter, PresenterBuilder};
 use crate::{
     controls::{camera::Camera, mouse::MouseState},
-    numerics::{angle::Angle, cylinder::Cylinder, rotations::*},
+    numerics::{cylinder::Cylinder, rotations::*},
     render::{
         drawbuffer::Drawbuffer, gl_drawable::GlDrawable, gl_mesh::GlTriangleMesh,
         gl_program::GlProgram, gridable::Triangable, mesh::Mesh, models,
@@ -133,7 +133,6 @@ pub struct Puma {
     puma_model: PumaModel,
     camera: Camera,
 
-    state_right: ConfigState,
     transform_left: CylindersTransforms,
     transform_right: CylindersTransforms,
     params: Params,
@@ -170,7 +169,6 @@ impl Puma {
             puma_model: PumaModel::new(Arc::clone(&gl)),
             camera: Camera::new(),
 
-            state_right: start_state,
             transform_left: default_transform.clone(),
             transform_right: default_transform,
             params,
@@ -231,23 +229,6 @@ impl Puma {
         });
         drawbuffer.blit(drawbuffer.size().width, 0);
     }
-}
-
-fn angle_slider(ui: &mut Ui, text: &str, angle: &mut Angle) -> egui::Response {
-    let mut value = angle.deg();
-    ui.label(text);
-
-    let response = ui.add(
-        DragValue::new(&mut value)
-            .clamp_range(0.0..=360.0)
-            .speed(0.5),
-    );
-
-    if response.changed() {
-        angle.set_deg(value);
-    }
-
-    response
 }
 
 impl Presenter for Puma {
@@ -330,7 +311,6 @@ pub struct PumaBuilder {
     start_position: na::Point3<f64>,
     end_rotation: Rotation,
     end_position: na::Point3<f64>,
-    keyframes: usize,
     params: Params,
 }
 
