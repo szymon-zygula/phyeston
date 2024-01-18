@@ -3,9 +3,9 @@ use egui_winit::winit::{self, platform::run_return::EventLoopExtRunReturn};
 use phyesthon::{
     controls::mouse::MouseState,
     presenters::{
-        jelly::JellyBuilder, kinematic_chain::KinematicChainBuilder, puma::PumaBuilder,
-        quaternions::QuaternionsBuilder, spinning_top::SpinningTopBuilder, spring::SpringBuilder,
-        hodograph::HodographBuilder, Presenter, PresenterBuilder,
+        hodograph::HodographBuilder, jelly::JellyBuilder, kinematic_chain::KinematicChainBuilder,
+        puma::PumaBuilder, quaternions::QuaternionsBuilder, spinning_top::SpinningTopBuilder,
+        spring::SpringBuilder, Presenter, PresenterBuilder,
     },
     window::Window,
 };
@@ -198,8 +198,8 @@ fn draw_ui(
 
     egui::TopBottomPanel::bottom("Bottom panel")
         .max_height(400.0)
-        .min_height(100.0)
-        .default_height(300.0)
+        .min_height(400.0)
+        .default_height(400.0)
         .show(egui_ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 presenters[*current_presenter].show_bottom_ui(ui);
