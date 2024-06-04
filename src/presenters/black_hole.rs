@@ -1,49 +1,61 @@
 use super::{Presenter, PresenterBuilder};
 use crate::{
-    controls::mouse::MouseState,
+    controls::{camera::Camera, mouse::MouseState},
     render::{
         gl_drawable::GlDrawable,
         gl_mesh::GlTriangleMesh,
         gl_program::GlProgram,
+        gl_texture::GlCubeTexture,
         mesh::{Mesh, Triangle},
+        models,
+        texture::Texture,
     },
 };
 use egui::Ui;
+use glow::HasContext;
 use nalgebra as na;
+use std::path::Path;
 use std::sync::Arc;
 
 pub struct BlackHole {
+    gl: Arc<glow::Context>,
     gl_program: GlProgram,
-    rect_mesh: GlTriangleMesh,
+    cube_texture: GlCubeTexture,
+    skybox_cube: GlTriangleMesh,
+    camera: Camera,
 
     mass: f32,
     fov: f32,
 }
 
 impl BlackHole {
+    const ROOM_SCALE: f32 = 20.0;
+
     pub fn new(gl: Arc<glow::Context>) -> Self {
         Self {
-            gl_program: GlProgram::vertex_fragment(Arc::clone(&gl), "2d_vert", "pass_frag"),
-            rect_mesh: Self::create_rect_mesh(Arc::clone(&gl)),
+            gl_program: GlProgram::vertex_fragment(
+                Arc::clone(&gl),
+                "black_hole_vert",
+                "black_hole_frag",
+            ),
+            cube_texture: GlCubeTexture::new(
+                Arc::clone(&gl),
+                &[
+                    Texture::from_file(&Path::new("textures/px.png")),
+                    Texture::from_file(&Path::new("textures/nx.png")),
+                    Texture::from_file(&Path::new("textures/py.png")),
+                    Texture::from_file(&Path::new("textures/ny.png")),
+                    Texture::from_file(&Path::new("textures/pz.png")),
+                    Texture::from_file(&Path::new("textures/nz.png")),
+                ],
+            ),
+            skybox_cube: GlTriangleMesh::new(Arc::clone(&gl), &models::cube()),
+            camera: Camera::new(),
 
             mass: 1.0e9,
             fov: 70.0,
+            gl,
         }
-    }
-
-    fn create_rect_mesh(gl: Arc<glow::Context>) -> GlTriangleMesh {
-        // 0 1
-        // 3 2
-        let mesh = Mesh::new(
-            vec![
-                na::point!(-1.0, 1.0, 0.0),
-                na::point!(1.0, 1.0, 0.0),
-                na::point!(1.0, -1.0, 0.0),
-                na::point!(-1.0, -1.0, 0.0),
-            ],
-            vec![Triangle([2, 1, 0]), Triangle([3, 2, 0])],
-        );
-        GlTriangleMesh::new(gl, &mesh)
     }
 }
 
@@ -76,13 +88,28 @@ impl Presenter for BlackHole {
         );
 
         self.gl_program.uniform_matrix_4_f32_slice(
+            "view_transform",
+            self.camera.view_transform_no_translation().as_slice(),
+        );
+        self.gl_program.uniform_matrix_4_f32_slice(
+            "projection_transform",
+            self.camera.projection_transform(aspect_ratio).as_slice(),
+        );
+        self.gl_program.uniform_matrix_4_f32_slice(
             "model_transform",
-            na::Scale3::new(aspect_ratio, 1.0, 1.0)
+            na::geometry::Scale3::new(Self::ROOM_SCALE, Self::ROOM_SCALE, Self::ROOM_SCALE)
                 .to_homogeneous()
                 .as_slice(),
         );
 
-        self.rect_mesh.draw();
+        self.gl_program
+            .uniform_3_f32_slice("eye_position", self.camera.position().coords.as_slice());
+
+        self.cube_texture.bind();
+
+        unsafe { self.gl.cull_face(glow::FRONT) };
+        self.skybox_cube.draw();
+        unsafe { self.gl.cull_face(glow::BACK) };
     }
 
     fn update(&mut self, _delta: std::time::Duration) {}
@@ -91,7 +118,9 @@ impl Presenter for BlackHole {
         "Black Hole"
     }
 
-    fn update_mouse(&mut self, _state: MouseState) {}
+    fn update_mouse(&mut self, state: MouseState) {
+        self.camera.update_from_mouse(state);
+    }
 }
 
 pub struct BlackHoleBuilder {}

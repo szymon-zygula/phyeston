@@ -91,17 +91,21 @@ impl Camera {
 
     pub fn view_transform(&self) -> na::Matrix4<f32> {
         na::Translation3::new(0.0, 0.0, -self.linear_distance()).to_homogeneous()
-            * na::Rotation3::from_axis_angle(
-                &na::Unit::new_normalize(na::vector![1.0, 0.0, 0.0]),
-                self.altitude,
-            )
-            .to_homogeneous()
+            * self.view_transform_no_translation()
+            * na::Translation3::from(-self.center.coords).to_homogeneous()
+    }
+
+    pub fn view_transform_no_translation(&self) -> na::Matrix4<f32> {
+        na::Rotation3::from_axis_angle(
+            &na::Unit::new_normalize(na::vector![1.0, 0.0, 0.0]),
+            self.altitude,
+        )
+        .to_homogeneous()
             * na::Rotation3::from_axis_angle(
                 &na::Unit::new_normalize(na::vector![0.0, 1.0, 0.0]),
                 self.azimuth,
             )
             .to_homogeneous()
-            * na::Translation3::from(-self.center.coords).to_homogeneous()
     }
 
     pub fn inverse_view_transform(&self) -> na::Matrix4<f32> {
