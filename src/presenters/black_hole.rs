@@ -17,6 +17,7 @@ pub struct BlackHole {
     rect_mesh: GlTriangleMesh,
 
     mass: f32,
+    fov: f32,
 }
 
 impl BlackHole {
@@ -26,6 +27,7 @@ impl BlackHole {
             rect_mesh: Self::create_rect_mesh(Arc::clone(&gl)),
 
             mass: 1.0e9,
+            fov: 70.0,
         }
     }
 
@@ -34,10 +36,10 @@ impl BlackHole {
         // 3 2
         let mesh = Mesh::new(
             vec![
-                na::point!(-0.25, 0.25, 0.0),
-                na::point!(0.25, 0.25, 0.0),
-                na::point!(0.25, -0.25, 0.0),
-                na::point!(-0.25, -0.25, 0.0),
+                na::point!(-1.0, 1.0, 0.0),
+                na::point!(1.0, 1.0, 0.0),
+                na::point!(1.0, -1.0, 0.0),
+                na::point!(-1.0, -1.0, 0.0),
             ],
             vec![Triangle([2, 1, 0]), Triangle([3, 2, 0])],
         );
@@ -47,6 +49,9 @@ impl BlackHole {
 
 impl Presenter for BlackHole {
     fn show_side_ui(&mut self, ui: &mut Ui) {
+        ui.label("FOV");
+        ui.add(egui::widgets::Slider::new(&mut self.fov, 0.0..=120.0));
+
         ui.label("Mass");
         ui.add(egui::widgets::Slider::new(&mut self.mass, 0.0..=1.0e15).logarithmic(true));
     }
@@ -62,20 +67,19 @@ impl Presenter for BlackHole {
         self.gl_program.uniform_matrix_4_f32_slice(
             "view_transform",
             na::matrix![
-                1.0 / aspect_ratio, 0.0, 0.0, -0.3;
-                0.0, 1.0, 0.0, 0.4;
+                1.0 / aspect_ratio, 0.0, 0.0, 0.0;
+                0.0, 1.0, 0.0, 0.0;
                 0.0, 0.0, 1.0, 0.0;
                 0.0, 0.0, 0.0, 1.0;
             ]
             .as_slice(),
         );
 
-        // Piston
         self.gl_program.uniform_matrix_4_f32_slice(
             "model_transform",
-            (na::geometry::Translation3::new(0.0, 0.0, 0.0).to_homogeneous()
-                * na::geometry::Scale3::new(0.125, 0.125, 1.0).to_homogeneous())
-            .as_slice(),
+            na::Scale3::new(aspect_ratio, 1.0, 1.0)
+                .to_homogeneous()
+                .as_slice(),
         );
 
         self.rect_mesh.draw();
