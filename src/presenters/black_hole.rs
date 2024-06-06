@@ -6,7 +6,6 @@ use crate::{
         gl_mesh::GlTriangleMesh,
         gl_program::GlProgram,
         gl_texture::GlCubeTexture,
-        mesh::{Mesh, Triangle},
         models,
         texture::Texture,
     },
@@ -76,6 +75,7 @@ impl Presenter for BlackHole {
 
         self.gl_program.enable();
 
+        self.gl_program.uniform_f32("M", self.mass);
         self.gl_program.uniform_matrix_4_f32_slice(
             "view_transform",
             na::matrix![
