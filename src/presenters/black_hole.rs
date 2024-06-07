@@ -51,7 +51,7 @@ impl BlackHole {
             skybox_cube: GlTriangleMesh::new(Arc::clone(&gl), &models::cube()),
             camera: Camera::new(),
 
-            mass: 1.0e9,
+            mass: 0.1,
             fov: 70.0,
             gl,
         }
@@ -64,7 +64,7 @@ impl Presenter for BlackHole {
         ui.add(egui::widgets::Slider::new(&mut self.fov, 0.0..=120.0));
 
         ui.label("Mass");
-        ui.add(egui::widgets::Slider::new(&mut self.mass, 0.0..=1.0e15).logarithmic(true));
+        ui.add(egui::widgets::Slider::new(&mut self.mass, 0.0..=10.0).logarithmic(true));
     }
 
     fn show_bottom_ui(&mut self, _ui: &mut Ui) {}
