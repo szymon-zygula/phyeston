@@ -2,12 +2,8 @@ use super::{Presenter, PresenterBuilder};
 use crate::{
     controls::{camera::Camera, mouse::MouseState},
     render::{
-        gl_drawable::GlDrawable,
-        gl_mesh::GlTriangleMesh,
-        gl_program::GlProgram,
-        gl_texture::GlCubeTexture,
-        models,
-        texture::Texture,
+        gl_drawable::GlDrawable, gl_mesh::GlTriangleMesh, gl_program::GlProgram,
+        gl_texture::GlCubeTexture, models, texture::Texture,
     },
 };
 use egui::Ui;
@@ -24,11 +20,10 @@ pub struct BlackHole {
     camera: Camera,
 
     mass: f32,
-    fov: f32,
 }
 
 impl BlackHole {
-    const ROOM_SCALE: f32 = 20.0;
+    const ROOM_SCALE: f32 = 1000.0;
 
     pub fn new(gl: Arc<glow::Context>) -> Self {
         Self {
@@ -52,7 +47,6 @@ impl BlackHole {
             camera: Camera::new(),
 
             mass: 0.1,
-            fov: 70.0,
             gl,
         }
     }
@@ -60,11 +54,8 @@ impl BlackHole {
 
 impl Presenter for BlackHole {
     fn show_side_ui(&mut self, ui: &mut Ui) {
-        ui.label("FOV");
-        ui.add(egui::widgets::Slider::new(&mut self.fov, 0.0..=120.0));
-
         ui.label("Mass");
-        ui.add(egui::widgets::Slider::new(&mut self.mass, 0.0..=10.0).logarithmic(true));
+        ui.add(egui::widgets::Slider::new(&mut self.mass, 0.001..=10.0).logarithmic(true));
     }
 
     fn show_bottom_ui(&mut self, _ui: &mut Ui) {}
