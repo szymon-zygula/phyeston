@@ -26,6 +26,10 @@ impl BlackHole {
     const ROOM_SCALE: f32 = 1000.0;
 
     pub fn new(gl: Arc<glow::Context>) -> Self {
+        let mut camera = Camera::new();
+        camera.azimuth = std::f32::consts::FRAC_PI_2;
+        camera.altitude = 0.0;
+
         Self {
             gl_program: GlProgram::vertex_fragment(
                 Arc::clone(&gl),
@@ -44,7 +48,7 @@ impl BlackHole {
                 ],
             ),
             skybox_cube: GlTriangleMesh::new(Arc::clone(&gl), &models::cube()),
-            camera: Camera::new(),
+            camera,
 
             mass: 0.1,
             gl,
@@ -67,16 +71,6 @@ impl Presenter for BlackHole {
         self.gl_program.enable();
 
         self.gl_program.uniform_f32("M", self.mass);
-        self.gl_program.uniform_matrix_4_f32_slice(
-            "view_transform",
-            na::matrix![
-                1.0 / aspect_ratio, 0.0, 0.0, 0.0;
-                0.0, 1.0, 0.0, 0.0;
-                0.0, 0.0, 1.0, 0.0;
-                0.0, 0.0, 0.0, 1.0;
-            ]
-            .as_slice(),
-        );
 
         self.gl_program.uniform_matrix_4_f32_slice(
             "view_transform",
